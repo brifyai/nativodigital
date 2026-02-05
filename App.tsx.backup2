@@ -1,0 +1,1309 @@
+
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Menu as MenuIcon,
+  Send as SendIcon,
+  Mic as MicIcon,
+  Image as ImageIcon,
+  ExpandMore as ExpandMoreIcon,
+  AttachFile as AttachFileIcon,
+  Close as CloseIcon,
+  InsertDriveFile as FileIcon,
+  StopCircle as StopIcon,
+  Delete as DeleteIcon,
+  Cancel as CancelIcon,
+  AutoAwesome as SparklesIcon,
+  Download as DownloadIcon,
+  Save as SaveIcon,
+  Refresh as RefreshIcon,
+  MenuBook as BookIcon,
+  Psychology as BrainIcon,
+  CameraAlt as CameraIcon,
+  Logout as LogoutIcon,
+  LightMode as SunIcon,
+  DarkMode as MoonIcon,
+  TrendingUp as TrendingUpIcon,
+  Share as ShareIcon,
+} from '@mui/icons-material';
+import Sidebar from './components/Sidebar';
+import MessageBubble from './components/MessageBubble';
+import Login from './components/Login';
+import LandingPage from './components/LandingPage';
+import Toast from './components/Toast';
+import ResourceSuggestions from './components/ResourceSuggestions';
+import { Message, Role, Attachment, GroundingSource } from './types';
+import { sendMessageStream } from './services/gemini';
+import { SUGGESTIONS, GEMINI_MODEL_OPTIONS } from './constants';
+import { getStorageSizeFormatted } from './utils/storage';
+import { optimizeImage, validateImageFile } from './utils/imageOptimizer';
+import { sanitizeText, validateFile, checkRateLimit } from './utils/sanitizer';
+import { useTranslation } from './hooks/useTranslation';
+import { suggestResources, EducationalResource } from './data/educationalResources';
+import { detectSubject } from './data/subjectTemplates';
+import { showError } from './utils/sweetAlert';
+
+// Context hooks
+import { useAuth } from './contexts/AuthContext';
+import { useChat } from './contexts/ChatContext';
+import { useUI } from './contexts/UIContext';
+
+// Lazy load heavy components
+const OnboardingTour = lazy(() => import('./components/OnboardingTour'));
+const StudyTools = lazy(() => import('./components/StudyTools'));
+const ProgressStats = lazy(() => import('./components/ProgressStats'));
+const ShareDialog = lazy(() => import('./components/ShareDialog'));
+
+function App() {
+  const navigate = useNavigate();
+  
+  // Context hooks
+  const { user, showLanding, customInstruction, setCustomInstruction, handleLogin, handleLogout, handleFullReset } = useAuth();
+  const { 
+    sessions, 
+    currentSessionId, 
+    currentSession,
+    currentMessages, 
+    isLoading, 
+    selectedModel,
+    setSelectedModel,
+    attachments,
+    setAttachments,
+    handleNewChat, 
+    handleDeleteSession,
+    handleClearHistory,
+    handleStopGeneration,
+    setCurrentSessionId,
+    chatRef
+  } = useChat();
+  const { 
+    theme, 
+    highContrast,
+    toggleTheme, 
+    toggleHighContrast,
+    isSidebarOpen,
+    setIsSidebarOpen,
+    showHelp, 
+    setShowHelp,
+    helpTab,
+    setHelpTab,
+    showSettings, 
+    setShowSettings,
+    showStudyTools,
+    setShowStudyTools,
+    showProgress,
+    setShowProgress,
+    showShare,
+    setShowShare,
+    showOnboarding,
+    setShowOnboarding,
+    isModelMenuOpen,
+    setIsModelMenuOpen,
+    toast,
+    showToast
+  } = useUI();
+  
+  // Translation
+  const { language, changeLanguage } = useTranslation();
+  
+  // Local state (specific to App component)
+  const [input, setInput] = useState('');
+  const [isListening, setIsListening] = useState(false);
+  const [suggestedResources, setSuggestedResources] = useState<EducationalResource[]>([]);
+  
+  // Refs
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<any>(null);
+
+  // Auto-scroll to bottom
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [currentMessages, isLoading, attachments]);
+
+  // Keyboard shortcuts for input focus and new chat
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+        e.preventDefault();
+        handleNewChat();
+        showToast('Nuevo chat creado', 'success');
+      }
+      
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault();
+        document.querySelector('textarea')?.focus();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleNewChat, showToast]);
+
+  const handleCompleteOnboarding = () => {
+    localStorage.setItem('nativo_onboarding_completed', 'true');
+    setShowOnboarding(false);
+  };
+
+  // File Handling
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const files: File[] = Array.from(e.target.files);
+      const newAttachments: Attachment[] = [];
+
+      for (const file of files) {
+        const validation = validateFile(file);
+        if (!validation.valid) {
+          showToast(validation.error || 'Archivo inválido', 'error');
+          continue;
+        }
+
+        try {
+          if (file.type.startsWith('image/')) {
+            const imageValidation = validateImageFile(file);
+            if (!imageValidation.valid) {
+              showToast(imageValidation.error || 'Imagen inválida', 'error');
+              continue;
+            }
+
+            showToast('Optimizando imagen...', 'info');
+            const optimized = await optimizeImage(file);
+            
+            newAttachments.push({
+              mimeType: optimized.mimeType,
+              data: optimized.data,
+              name: file.name
+            });
+            
+            if (optimized.compressionRatio > 1.5) {
+              showToast(
+                `Imagen optimizada: ${(optimized.compressionRatio).toFixed(1)}x más pequeña`, 
+                'success'
+              );
+            }
+          } else {
+            const reader = new FileReader();
+            const base64Promise = new Promise<string>((resolve) => {
+              reader.onload = (e) => {
+                const result = e.target?.result as string;
+                const base64 = result.split(',')[1];
+                resolve(base64);
+              };
+            });
+            reader.readAsDataURL(file);
+            const base64 = await base64Promise;
+            
+            newAttachments.push({
+              mimeType: file.type,
+              data: base64,
+              name: file.name
+            });
+          }
+        } catch (error) {
+          console.error('Error processing file:', error);
+          showToast('Error al procesar el archivo', 'error');
+        }
+      }
+      
+      setAttachments(prev => [...prev, ...newAttachments]);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Voice Handling
+  const toggleListening = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+      recognition.lang = language === 'es' ? 'es-ES' : 'en-US';
+      recognition.interimResults = true;
+      recognition.continuous = true;
+
+      recognition.onstart = () => setIsListening(true);
+      
+      let finalTranscript = '';
+
+      recognition.onresult = (event: any) => {
+        let interimTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+          }
+        }
+        if (finalTranscript || interimTranscript) {
+            setInput(prev => prev + (finalTranscript ? " " + finalTranscript : "")); 
+            finalTranscript = '';
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error("Speech recognition error", event.error);
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } else {
+      showError(
+        "Función no disponible",
+        "Tu navegador no soporta la entrada de voz. Intenta usar Chrome o Edge."
+      );
+    }
+  };
+
+  const handleSend = async (manualText?: string) => {
+    const textToSend = typeof manualText === 'string' ? manualText : input;
+
+    if ((!textToSend.trim() && attachments.length === 0) || !currentSessionId) return;
+
+    // Check rate limit
+    const rateLimitCheck = checkRateLimit();
+    if (!rateLimitCheck.allowed) {
+      showToast(rateLimitCheck.error || 'Demasiados mensajes', 'warning');
+      return;
+    }
+
+    // Sanitize input
+    const sanitizedText = sanitizeText(textToSend);
+    if (sanitizedText !== textToSend) {
+      showToast('Algunos caracteres fueron removidos por seguridad', 'info');
+    }
+
+    // Detect subject and suggest resources
+    const detectedSubject = detectSubject(sanitizedText);
+    const resources = suggestResources(sanitizedText, user?.grade || 'secundaria', language);
+    
+    if (resources.length > 0) {
+      setSuggestedResources(resources);
+    }
+
+    if (isListening) {
+        recognitionRef.current?.stop();
+        setIsListening(false);
+    }
+
+    const userMsg: Message = {
+      id: crypto.randomUUID(),
+      role: Role.USER,
+      content: sanitizedText,
+      attachments: [...attachments],
+      timestamp: Date.now()
+    };
+
+    setSessions(prev => prev.map(session => {
+      if (session.id === currentSessionId) {
+        return {
+          ...session,
+          messages: [...session.messages, userMsg],
+          title: session.messages.length === 0 ? (textToSend ? textToSend.slice(0, 30) : "Análisis de archivo") : session.title
+        };
+      }
+      return session;
+    }));
+
+    setInput('');
+    setAttachments([]);
+    setIsLoading(true);
+
+    const aiMsgId = crypto.randomUUID();
+    const aiMsg: Message = {
+      id: aiMsgId,
+      role: Role.MODEL,
+      content: '', 
+      timestamp: Date.now()
+    };
+
+    setSessions(prev => prev.map(session => {
+      if (session.id === currentSessionId) {
+        return { ...session, messages: [...session.messages, aiMsg] };
+      }
+      return session;
+    }));
+
+    // Create abort controller for this request
+    const controller = new AbortController();
+    setAbortController(controller);
+
+    try {
+      if (!chatRef.current) {
+        const session = sessions.find(s => s.id === currentSessionId);
+        const finalInstruction = getCombinedSystemInstruction(selectedModel, customInstruction);
+        chatRef.current = createChatSession(selectedModel, session ? session.messages : [], finalInstruction);
+      }
+
+      await sendMessageStream(
+          chatRef.current, 
+          userMsg.content, 
+          userMsg.attachments, 
+          (chunk) => {
+              if (controller.signal.aborted) return;
+              setSessions(prev => prev.map(session => {
+                  if (session.id === currentSessionId) {
+                  const updatedMessages = session.messages.map(msg => {
+                      if (msg.id === aiMsgId) {
+                      return { ...msg, content: msg.content + chunk };
+                      }
+                      return msg;
+                  });
+                  return { ...session, messages: updatedMessages };
+                  }
+                  return session;
+              }));
+          },
+          (sources: GroundingSource[]) => {
+              if (controller.signal.aborted) return;
+              setSessions(prev => prev.map(session => {
+                  if (session.id === currentSessionId) {
+                  const updatedMessages = session.messages.map(msg => {
+                      if (msg.id === aiMsgId) {
+                          const existing = msg.groundingSources || [];
+                          const newSources = sources.filter(s => !existing.some(e => e.uri === s.uri));
+                          return { ...msg, groundingSources: [...existing, ...newSources] };
+                      }
+                      return msg;
+                  });
+                  return { ...session, messages: updatedMessages };
+                  }
+                  return session;
+              }));
+          }
+      );
+    } catch (error: any) {
+      if (error.name === 'AbortError' || controller.signal.aborted) {
+        setSessions(prev => prev.map(session => {
+          if (session.id === currentSessionId) {
+            const updatedMessages = session.messages.map(msg => {
+              if (msg.id === aiMsgId && !msg.content) {
+                return { 
+                    ...msg, 
+                    content: `_Generación detenida por el usuario._`,
+                };
+              }
+              return msg;
+            });
+            return { ...session, messages: updatedMessages };
+          }
+          return session;
+        }));
+      } else {
+        console.error("Error sending message", error);
+        
+        let errorMessage = "No se pudo conectar con el servidor.";
+        
+        // Better error messages
+        if (error.message?.includes('API key')) {
+          errorMessage = "⚠️ **API Key inválida o no configurada**\n\nPor favor, configura tu API key de Gemini en el archivo `.env.local`:\n\n```\nGEMINI_API_KEY=tu_api_key_aqui\n```\n\nObtén tu API key gratis en: https://aistudio.google.com/apikey";
+          showToast('API Key no configurada correctamente', 'error');
+        } else if (error.message?.includes('quota') || error.message?.includes('rate limit')) {
+          errorMessage = "⏱️ **Límite de uso alcanzado**\n\nHas alcanzado el límite de solicitudes. Espera unos minutos e intenta de nuevo.";
+          showToast('Límite de uso alcanzado. Espera un momento.', 'warning');
+        } else if (error.message?.includes('network') || error.message?.includes('fetch')) {
+          errorMessage = "🌐 **Error de conexión**\n\nNo se pudo conectar con el servidor. Verifica tu conexión a internet.";
+          showToast('Error de conexión. Verifica tu internet.', 'error');
+        } else {
+          errorMessage = `❌ **Error inesperado**\n\n${error.message || "Algo salió mal."}\n\n_Intenta regenerar la respuesta._`;
+          showToast('Error al procesar tu mensaje', 'error');
+        }
+        
+        setSessions(prev => prev.map(session => {
+            if (session.id === currentSessionId) {
+              const updatedMessages = session.messages.map(msg => {
+                if (msg.id === aiMsgId) {
+                  return { 
+                      ...msg, 
+                      content: errorMessage,
+                      isError: true 
+                  };
+                }
+                return msg;
+              });
+              return { ...session, messages: updatedMessages };
+            }
+            return session;
+          }));
+      }
+    } finally {
+      setIsLoading(false);
+      setAbortController(null);
+    }
+  };
+
+  const handleStopGeneration = () => {
+    if (abortController) {
+      abortController.abort();
+      setAbortController(null);
+      setIsLoading(false);
+    }
+  };
+
+  const handleRegenerateResponse = () => {
+    if (!currentSessionId) return;
+    
+    const session = sessions.find(s => s.id === currentSessionId);
+    if (!session || session.messages.length < 2) return;
+
+    // Get the last user message
+    const messages = [...session.messages];
+    const lastAiIndex = messages.length - 1;
+    const lastUserIndex = messages.length - 2;
+    
+    if (messages[lastAiIndex].role !== Role.MODEL || messages[lastUserIndex].role !== Role.USER) return;
+
+    const lastUserMessage = messages[lastUserIndex];
+    
+    // Remove last AI response
+    setSessions(prev => prev.map(s => {
+      if (s.id === currentSessionId) {
+        return { ...s, messages: messages.slice(0, -1) };
+      }
+      return s;
+    }));
+
+    // Reset chat to force new context
+    chatRef.current = null;
+
+    // Resend the last user message
+    setTimeout(() => {
+      handleSend(lastUserMessage.content);
+    }, 100);
+  };
+
+  const handleGenerateStudyTool = (type: 'flashcards' | 'quiz' | 'summary', topic: string) => {
+    let prompt = '';
+    
+    if (type === 'flashcards') {
+      prompt = `Genera 10 flashcards sobre "${topic}". Formato:
+
+**Tarjeta 1**
+Pregunta: [pregunta]
+Respuesta: [respuesta]
+
+Hazlas educativas y útiles para memorizar conceptos clave.`;
+    } else if (type === 'quiz') {
+      prompt = `Crea un quiz de 5 preguntas de opción múltiple sobre "${topic}". Formato:
+
+**Pregunta 1:** [pregunta]
+A) [opción]
+B) [opción]
+C) [opción]
+D) [opción]
+**Respuesta correcta:** [letra]
+**Explicación:** [por qué es correcta]
+
+Incluye preguntas de diferentes niveles de dificultad.`;
+    } else if (type === 'summary') {
+      prompt = `Crea un resumen estructurado y completo sobre "${topic}". Incluye:
+
+1. **Introducción** - Qué es y por qué es importante
+2. **Conceptos Clave** - Ideas principales
+3. **Detalles Importantes** - Información relevante
+4. **Ejemplos** - Casos prácticos
+5. **Conclusión** - Resumen final
+
+Hazlo claro y fácil de estudiar.`;
+    }
+    
+    handleSend(prompt);
+    showToast(`Generando ${type === 'flashcards' ? 'flashcards' : type === 'quiz' ? 'quiz' : 'resumen'}...`, 'info');
+  };
+
+  const handleShareConversation = (shareId: string) => {
+    showToast('Enlace copiado al portapapeles', 'success');
+  };
+
+  const handleSuggestionClick = (text: string) => {
+    handleSend(text);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const handleClearHistory = async () => {
+    const result = await showDeleteConfirm(
+      "¿Borrar todo el historial?",
+      "Esta acción no se puede deshacer. Se eliminarán todas tus conversaciones."
+    );
+    
+    if (result.isConfirmed) {
+        setSessions([]);
+        localStorage.removeItem('accesoia_sessions');
+        handleNewChat();
+        setShowSettings(false);
+        showSwalToast('Historial borrado correctamente', 'success');
+    }
+  }
+
+  const handleExportData = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(sessions, null, 2));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", `nativo_digital_historial_${new Date().toISOString().slice(0,10)}.json`);
+    document.body.appendChild(downloadAnchorNode); 
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+    showToast('Historial exportado correctamente', 'success');
+  }
+
+  const handleExportMarkdown = () => {
+    if (!currentSessionId) {
+      showToast('No hay conversación activa para exportar', 'warning');
+      return;
+    }
+    
+    const session = sessions.find(s => s.id === currentSessionId);
+    if (!session) return;
+
+    let markdown = `# ${session.title}\n\n`;
+    markdown += `*Exportado el ${new Date().toLocaleString('es-ES')}*\n\n---\n\n`;
+
+    session.messages.forEach(msg => {
+      const role = msg.role === Role.USER ? '👤 **Usuario**' : '🤖 **Nativo Digital**';
+      markdown += `### ${role}\n\n${msg.content}\n\n`;
+      
+      if (msg.groundingSources && msg.groundingSources.length > 0) {
+        markdown += `**Fuentes:**\n`;
+        msg.groundingSources.forEach(source => {
+          markdown += `- [${source.title}](${source.uri})\n`;
+        });
+        markdown += `\n`;
+      }
+      
+      markdown += `---\n\n`;
+    });
+
+    const blob = new Blob([markdown], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${session.title.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().slice(0,10)}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Conversación exportada a Markdown', 'success');
+  }
+
+  const handleExportText = () => {
+    if (!currentSessionId) {
+      showToast('No hay conversación activa para exportar', 'warning');
+      return;
+    }
+    
+    const session = sessions.find(s => s.id === currentSessionId);
+    if (!session) return;
+
+    let text = `${session.title}\n`;
+    text += `Exportado el ${new Date().toLocaleString('es-ES')}\n`;
+    text += `${'='.repeat(60)}\n\n`;
+
+    session.messages.forEach(msg => {
+      const role = msg.role === Role.USER ? 'USUARIO' : 'NATIVO DIGITAL';
+      text += `[${role}]\n${msg.content}\n\n`;
+      
+      if (msg.groundingSources && msg.groundingSources.length > 0) {
+        text += `Fuentes:\n`;
+        msg.groundingSources.forEach(source => {
+          text += `- ${source.title}: ${source.uri}\n`;
+        });
+        text += `\n`;
+      }
+      
+      text += `${'-'.repeat(60)}\n\n`;
+    });
+
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${session.title.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().slice(0,10)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Conversación exportada a texto', 'success');
+  }
+  
+  const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const imported = JSON.parse(event.target?.result as string);
+        if (Array.isArray(imported) && imported.length > 0) {
+          setSessions(prev => [...imported, ...prev]);
+          showToast(`${imported.length} conversaciones importadas`, 'success');
+        } else {
+          showToast('Archivo inválido', 'error');
+        }
+      } catch (error) {
+        showToast('Error al importar el archivo', 'error');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  }
+  
+  const handleFullReset = async () => {
+    const result = await showDeleteConfirm(
+      "¿Borrar cuenta y datos?",
+      "Esta acción eliminará permanentemente tu cuenta y todas tus conversaciones. No se puede deshacer."
+    );
+    
+    if (result.isConfirmed) {
+        localStorage.clear();
+        window.location.reload();
+    }
+  }
+
+  const handleDeleteSession = async (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation();
+    
+    const result = await showDeleteConfirm(
+      "¿Eliminar conversación?",
+      "Esta conversación se eliminará permanentemente."
+    );
+    
+    if (result.isConfirmed) {
+        const newSessions = sessions.filter(s => s.id !== sessionId);
+        setSessions(newSessions);
+        
+        if (currentSessionId === sessionId) {
+            if (newSessions.length > 0) {
+                setCurrentSessionId(newSessions[0].id);
+                chatRef.current = null;
+            } else {
+                handleNewChat();
+            }
+        }
+        
+        showSwalToast('Conversación eliminada', 'success');
+    }
+  }
+
+  const handleModelSelect = (model: string) => {
+      setSelectedModel(model);
+      // We need to trigger a new chat or reset the ref to apply the new model ID AND instructions
+      // handleNewChat will be called by the user or we can force it.
+      // Better to just set state and let handleNewChat pick it up when triggered.
+      // But if we want immediate effect:
+      setIsModelMenuOpen(false);
+      
+      // Optional: Auto-start new chat on model switch to avoid confusion with history from another model
+      // But let's leave it to user to start new chat or continue (though changing model mid-chat is complex with API)
+      // For Gemini, creating a new chat instance is required.
+      handleNewChat(); 
+  }
+
+  const triggerFileUpload = () => {
+    fileInputRef.current?.click();
+  };
+
+  // --- RENDER FLOW ---
+  if (!user) {
+    if (showLanding) {
+        return <LandingPage onStart={() => setShowLanding(false)} toggleTheme={toggleTheme} isDarkMode={theme === 'dark'} />;
+    }
+    return <Login onLogin={handleLogin} toggleTheme={toggleTheme} isDarkMode={theme === 'dark'} />;
+  }
+
+  return (
+    <div className="flex h-screen w-full bg-background text-primary font-sans selection:bg-accent selection:text-black">
+      
+      {/* Onboarding Tour */}
+      {user && showOnboarding && (
+        <Suspense fallback={<div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div></div>}>
+          <OnboardingTour onComplete={handleCompleteOnboarding} />
+        </Suspense>
+      )}
+      
+      {/* Study Tools Modal */}
+      {showStudyTools && (
+        <Suspense fallback={<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div></div>}>
+          <StudyTools 
+            onClose={() => setShowStudyTools(false)}
+            onGenerateTool={handleGenerateStudyTool}
+          />
+        </Suspense>
+      )}
+
+      {/* Progress Stats Modal */}
+      {showProgress && (
+        <Suspense fallback={<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div></div>}>
+          <ProgressStats 
+            sessions={sessions}
+            onClose={() => setShowProgress(false)}
+          />
+        </Suspense>
+      )}
+
+      {/* Share Dialog */}
+      {showShare && currentSession && (
+        <Suspense fallback={<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div></div>}>
+          <ShareDialog 
+            session={currentSession}
+            onClose={() => setShowShare(false)}
+            onShare={handleShareConversation}
+          />
+        </Suspense>
+      )}
+      
+      {/* Toast Notifications */}
+      {toast && (
+        <Toast 
+          message={toast.message} 
+          type={toast.type} 
+          onClose={() => setToast(null)} 
+        />
+      )}
+      
+      {/* Help Modal */}
+      {showHelp && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+              <div className="bg-surface border border-border rounded-2xl max-w-2xl w-full flex flex-col max-h-[90vh] shadow-2xl overflow-hidden text-primary">
+                  
+                  {/* Header */}
+                  <div className="flex justify-between items-center p-6 border-b border-border bg-surface">
+                      <div className="flex items-center gap-3">
+                        <div className="bg-accent/20 p-2 rounded-lg text-accent">
+                          <BookIcon sx={{ fontSize: 24 }} />
+                        </div>
+                        <div>
+                          <h3 className="text-xl font-semibold">Centro de Ayuda Nativo Digital</h3>
+                          <p className="text-xs text-secondary">Aprende a estudiar mejor</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setShowHelp(false)} className="text-secondary hover:text-primary p-1 hover:bg-surfaceHighlight rounded-full transition-colors">
+                        <CloseIcon sx={{ fontSize: 24 }} />
+                      </button>
+                  </div>
+
+                  {/* Tabs */}
+                  <div className="flex border-b border-border bg-surface">
+                      <button onClick={() => setHelpTab('start')} className={`flex-1 py-4 text-sm font-medium transition-colors relative ${helpTab === 'start' ? 'text-accent' : 'text-secondary hover:text-primary'}`}>Inicio Rápido {helpTab === 'start' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent"></div>}</button>
+                      <button onClick={() => setHelpTab('tools')} className={`flex-1 py-4 text-sm font-medium transition-colors relative ${helpTab === 'tools' ? 'text-accent' : 'text-secondary hover:text-primary'}`}>Herramientas {helpTab === 'tools' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent"></div>}</button>
+                      <button onClick={() => setHelpTab('models')} className={`flex-1 py-4 text-sm font-medium transition-colors relative ${helpTab === 'models' ? 'text-accent' : 'text-secondary hover:text-primary'}`}>Modelos IA {helpTab === 'models' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent"></div>}</button>
+                  </div>
+
+                  {/* Content */}
+                  <div className="p-6 overflow-y-auto bg-background flex-1">
+                      
+                      {/* Tab: Inicio Rápido */}
+                      {helpTab === 'start' && (
+                        <div className="space-y-6">
+                            <div className="bg-accent/10 border border-accent/30 rounded-xl p-4 mb-4">
+                                <h4 className="font-bold text-accent mb-2 flex items-center gap-2">
+                                    <SparklesIcon sx={{ fontSize: 18 }} /> Atajos de Teclado
+                                </h4>
+                                <div className="space-y-2 text-sm">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-secondary">Nuevo chat</span>
+                                        <kbd className="px-2 py-1 bg-surface border border-border rounded text-xs font-mono">Ctrl + N</kbd>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-secondary">Enfocar input</span>
+                                        <kbd className="px-2 py-1 bg-surface border border-border rounded text-xs font-mono">Ctrl + /</kbd>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-secondary">Abrir ayuda</span>
+                                        <kbd className="px-2 py-1 bg-surface border border-border rounded text-xs font-mono">Ctrl + H</kbd>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-secondary">Alternar sidebar</span>
+                                        <kbd className="px-2 py-1 bg-surface border border-border rounded text-xs font-mono">Ctrl + B</kbd>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="flex gap-4">
+                                <div className="w-10 h-10 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center flex-shrink-0 font-bold">1</div>
+                                <div><h4 className="font-medium mb-1">Elige un tema</h4><p className="text-secondary text-sm">Escribe lo que quieras aprender. Ejemplo: "Explícame la Revolución Francesa".</p></div>
+                            </div>
+                            <div className="flex gap-4">
+                                <div className="w-10 h-10 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center flex-shrink-0 font-bold">2</div>
+                                <div><h4 className="font-medium mb-1">Interactúa</h4><p className="text-secondary text-sm">Si no entiendes algo, pregunta de nuevo. Puedes decir "Más simple" o "Hazme un quiz".</p></div>
+                            </div>
+                             <div className="flex gap-4">
+                                <div className="w-10 h-10 rounded-full bg-green-500/20 text-green-400 flex items-center justify-center flex-shrink-0 font-bold">3</div>
+                                <div><h4 className="font-medium mb-1">Verifica</h4><p className="text-secondary text-sm">Nativo Digital te mostrará enlaces para que confirmes la información.</p></div>
+                            </div>
+                            
+                            <div className="bg-surfaceHighlight rounded-xl p-4 mt-4">
+                                <h4 className="font-medium text-sm mb-2">💡 Consejos Pro</h4>
+                                <ul className="text-xs text-secondary space-y-1 list-disc list-inside">
+                                    <li>Sé específico en tus preguntas para mejores respuestas</li>
+                                    <li>Usa el botón de regenerar si la respuesta no te convence</li>
+                                    <li>Exporta conversaciones importantes para estudiar después</li>
+                                    <li>Cambia de modelo según la complejidad del tema</li>
+                                </ul>
+                            </div>
+                        </div>
+                      )}
+
+                      {/* Tab: Herramientas */}
+                      {helpTab === 'tools' && (
+                        <div className="grid grid-cols-1 gap-4">
+                            <div className="bg-surface p-4 rounded-xl border border-border flex gap-4">
+                                <div className="bg-surfaceHighlight p-3 rounded-lg h-fit text-accent"><CameraIcon sx={{ fontSize: 20 }}/></div>
+                                <div><h4 className="font-medium text-sm">Visión (Cámara)</h4><p className="text-secondary text-xs mt-1">Sube una foto de tu tarea. La IA analizará la imagen.</p></div>
+                            </div>
+                            <div className="bg-surface p-4 rounded-lg border border-border flex gap-4">
+                                <div className="bg-surfaceHighlight p-3 rounded-lg h-fit text-accent"><MicIcon sx={{ fontSize: 20 }}/></div>
+                                <div><h4 className="font-medium text-sm">Voz (Micrófono)</h4><p className="text-secondary text-xs mt-1">Ideal para practicar idiomas o si prefieres hablar.</p></div>
+                            </div>
+                            <div className="bg-surface p-4 rounded-lg border border-border flex gap-4">
+                                <div className="bg-surfaceHighlight p-3 rounded-lg h-fit text-accent"><AttachFileIcon sx={{ fontSize: 20 }}/></div>
+                                <div><h4 className="font-medium text-sm">Archivos (PDF/TXT)</h4><p className="text-secondary text-xs mt-1">Adjunta tus apuntes o libros en PDF para resumirlos.</p></div>
+                            </div>
+                        </div>
+                      )}
+
+                      {/* Tab: Modelos */}
+                      {helpTab === 'models' && (
+                        <div className="space-y-4">
+                            <p className="text-sm text-secondary mb-4">Puedes cambiar el "cerebro" de la IA en el menú superior.</p>
+                            <div className="border-l-2 border-accent pl-4 py-1">
+                                <h4 className="text-accent font-medium text-sm">Modo Estudio (Flash)</h4>
+                                <p className="text-secondary text-xs mt-1">El mejor equilibrio. Rápido e inteligente.</p>
+                            </div>
+                            <div className="border-l-2 border-purple-400 pl-4 py-1">
+                                <h4 className="text-purple-400 font-medium text-sm">Modo Experto (Pro)</h4>
+                                <p className="text-secondary text-xs mt-1">Más lento pero potente para matemáticas complejas.</p>
+                            </div>
+                        </div>
+                      )}
+
+                  </div>
+
+                  <div className="p-4 border-t border-border bg-surface">
+                      <button onClick={() => setShowHelp(false)} className="w-full bg-primary hover:opacity-90 text-background font-medium py-3 rounded-xl transition-colors">¡Entendido, vamos a estudiar!</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Settings Modal */}
+      {showSettings && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in" onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowSettings(false);
+            }
+          }}>
+              <div className="bg-surface border border-border rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col max-h-[90vh] text-primary" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-xl font-semibold flex items-center gap-2">Mi Perfil</h3>
+                      <button onClick={() => setShowSettings(false)} className="text-secondary hover:text-primary">
+                        <CancelIcon sx={{ fontSize: 24 }} />
+                      </button>
+                  </div>
+                  
+                  <div className="overflow-y-auto space-y-6 pr-2">
+                      <div className="flex items-center gap-3 mb-2 pb-6 border-b border-border">
+                            <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center text-4xl shadow-lg animate-float text-white">
+                                {user.avatarId}
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-lg">{user.name}</h3>
+                                <p className="text-sm text-accent capitalize">{user.grade}</p>
+                            </div>
+                      </div>
+
+                      <div className="space-y-2">
+                          <label className="text-sm font-medium text-secondary flex items-center gap-2">
+                              <SparklesIcon sx={{ fontSize: 16 }} className="text-accent" />
+                              Personalidad del Tutor
+                          </label>
+                          <textarea 
+                              value={customInstruction}
+                              onChange={(e) => setCustomInstruction(e.target.value)}
+                              placeholder="Ej: Explica todo con metáforas de fútbol..."
+                              className="w-full bg-background border border-border rounded-xl p-3 text-sm focus:border-accent outline-none min-h-[100px] resize-y"
+                          />
+                          <div className="flex justify-end gap-2">
+                              {customInstruction && (
+                                <button onClick={() => setCustomInstruction('')} className="text-xs text-secondary hover:text-primary flex items-center gap-1">
+                                  <RefreshIcon sx={{ fontSize: 12 }} /> Restaurar
+                                </button>
+                              )}
+                          </div>
+                      </div>
+
+                      <div className="h-px bg-border"></div>
+
+                      <div className="space-y-3">
+                          <div className="text-xs font-medium text-secondary uppercase tracking-wider mb-2">Ayuda y Aprendizaje</div>
+                          <button 
+                            onClick={() => {
+                              setShowSettings(false);
+                              setShowOnboarding(true);
+                            }} 
+                            className="w-full flex items-center justify-between bg-surfaceHighlight hover:bg-border text-primary px-4 py-3 rounded-xl transition-colors text-sm"
+                          >
+                              <span className="flex items-center gap-2">
+                                <BookIcon sx={{ fontSize: 18 }} /> Ver tutorial de nuevo
+                              </span>
+                          </button>
+                          
+                          <div className="text-xs font-medium text-secondary uppercase tracking-wider mb-2 mt-4">Almacenamiento</div>
+                          <div className="bg-surfaceHighlight rounded-xl p-4 border border-border">
+                              <div className="flex items-center justify-between mb-2">
+                                  <span className="text-sm text-secondary">Espacio usado</span>
+                                  <span className="text-sm font-bold text-primary">{getStorageSizeFormatted()}</span>
+                              </div>
+                              <div className="text-xs text-secondary">
+                                  {sessions.length} conversaciones guardadas
+                              </div>
+                          </div>
+                          
+                          <div className="text-xs font-medium text-secondary uppercase tracking-wider mb-2 mt-4">Accesibilidad</div>
+                          <button 
+                            onClick={toggleHighContrast}
+                            className="w-full flex items-center justify-between bg-surfaceHighlight hover:bg-border text-primary px-4 py-3 rounded-xl transition-colors text-sm"
+                          >
+                              <span className="flex items-center gap-2">
+                                <SunIcon sx={{ fontSize: 18 }} /> Alto Contraste
+                              </span>
+                              <div className={`w-10 h-6 rounded-full transition-colors ${highContrast ? 'bg-accent' : 'bg-border'} relative`}>
+                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${highContrast ? 'translate-x-5' : 'translate-x-1'}`}></div>
+                              </div>
+                          </button>
+                          
+                          <div className="text-xs font-medium text-secondary uppercase tracking-wider mb-2 mt-4">Idioma / Language</div>
+                          <div className="grid grid-cols-2 gap-2">
+                              <button
+                                onClick={() => changeLanguage('es')}
+                                className={`px-4 py-3 rounded-xl font-medium text-sm transition-all ${
+                                  language === 'es'
+                                    ? 'bg-accent text-white'
+                                    : 'bg-surfaceHighlight hover:bg-border text-primary'
+                                }`}
+                              >
+                                🇪🇸 Español
+                              </button>
+                              <button
+                                onClick={() => changeLanguage('en')}
+                                className={`px-4 py-3 rounded-xl font-medium text-sm transition-all ${
+                                  language === 'en'
+                                    ? 'bg-accent text-white'
+                                    : 'bg-surfaceHighlight hover:bg-border text-primary'
+                                }`}
+                              >
+                                🇬🇧 English
+                              </button>
+                          </div>
+                          
+                          <div className="text-xs font-medium text-secondary uppercase tracking-wider mb-2 mt-4">Exportar Conversación Actual</div>
+                          <button onClick={handleExportMarkdown} className="w-full flex items-center justify-between bg-surfaceHighlight hover:bg-border text-primary px-4 py-3 rounded-xl transition-colors text-sm">
+                              <span className="flex items-center gap-2"><DownloadIcon sx={{ fontSize: 18 }} /> Exportar como Markdown</span>
+                          </button>
+                          <button onClick={handleExportText} className="w-full flex items-center justify-between bg-surfaceHighlight hover:bg-border text-primary px-4 py-3 rounded-xl transition-colors text-sm">
+                              <span className="flex items-center gap-2"><DownloadIcon sx={{ fontSize: 18 }} /> Exportar como Texto</span>
+                          </button>
+                          
+                          <div className="text-xs font-medium text-secondary uppercase tracking-wider mb-2 mt-4">Gestión de Datos</div>
+                          <button onClick={handleExportData} className="w-full flex items-center justify-between bg-surfaceHighlight hover:bg-border text-primary px-4 py-3 rounded-xl transition-colors text-sm">
+                              <span className="flex items-center gap-2"><DownloadIcon sx={{ fontSize: 18 }} /> Exportar todo (JSON)</span>
+                          </button>
+                          <label className="w-full flex items-center justify-between bg-surfaceHighlight hover:bg-border text-primary px-4 py-3 rounded-xl transition-colors text-sm cursor-pointer">
+                              <span className="flex items-center gap-2"><SaveIcon sx={{ fontSize: 18 }} /> Importar conversaciones</span>
+                              <input type="file" accept=".json" onChange={handleImportData} className="hidden" />
+                          </label>
+                          <button onClick={handleLogout} className="w-full flex items-center gap-2 text-secondary hover:text-primary hover:bg-surfaceHighlight px-4 py-3 rounded-xl transition-colors text-sm mt-2 justify-center border border-border">
+                                <LogoutIcon sx={{ fontSize: 18 }} /> Cerrar Sesión
+                          </button>
+                          <button onClick={handleClearHistory} className="w-full flex items-center gap-2 text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 px-4 py-3 rounded-xl transition-colors text-sm justify-center border border-orange-500/30">
+                                <DeleteIcon sx={{ fontSize: 18 }} /> Borrar todo el historial
+                          </button>
+                          <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl mt-2">
+                              <h4 className="text-red-400 font-medium text-sm mb-1">Zona de Peligro</h4>
+                              <button onClick={handleFullReset} className="flex items-center gap-2 text-red-400 hover:text-red-300 text-sm w-full py-2"><DeleteIcon sx={{ fontSize: 16 }} /> Borrar cuenta y datos</button>
+                          </div>
+                      </div>
+                  </div>
+                  <div className="text-xs text-center text-secondary mt-6 pt-4 border-t border-border">Nativo Digital v1.6 • {user.name}</div>
+              </div>
+          </div>
+      )}
+
+      <Sidebar 
+        isOpen={isSidebarOpen} 
+        toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+        sessions={sessions}
+        currentSessionId={currentSessionId}
+        onSelectSession={(id) => {
+          setCurrentSessionId(id);
+          navigate(`/chat/${id}`);
+        }}
+        onNewChat={handleNewChat}
+        onDeleteSession={handleDeleteSession}
+        onOpenHelp={() => setShowHelp(true)}
+        onOpenSettings={() => setShowSettings(true)}
+        onOpenStudyTools={() => setShowStudyTools(true)}
+        onOpenProgress={() => setShowProgress(true)}
+      />
+
+      <div className="flex-1 flex flex-col h-full relative">
+        {/* Header */}
+        <div className="h-16 flex items-center justify-between px-4 lg:px-8">
+            <div className="flex items-center gap-3">
+                {!isSidebarOpen && (
+                    <button onClick={() => setIsSidebarOpen(true)} className="p-2 hover:bg-surface rounded-full text-secondary hover:text-primary transition-colors">
+                        <MenuIcon sx={{ fontSize: 20 }} />
+                    </button>
+                )}
+                
+                <div className="relative">
+                    <button onClick={() => setIsModelMenuOpen(!isModelMenuOpen)} className="flex items-center gap-2 text-lg font-medium text-primary hover:bg-surface px-3 py-1.5 rounded-lg transition-colors group">
+                        <span className="flex items-center gap-2"><SparklesIcon sx={{ fontSize: 16 }} className="text-accent" /> {GEMINI_MODEL_OPTIONS.find(m => m.id === selectedModel)?.name}</span>
+                        <ExpandMoreIcon sx={{ fontSize: 16 }} className={`text-secondary transition-transform ${isModelMenuOpen ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {isModelMenuOpen && (
+                        <div className="absolute top-full left-0 mt-2 w-80 bg-surface border border-border rounded-xl shadow-2xl py-2 z-50">
+                            <div className="px-4 py-2 text-xs font-bold text-secondary uppercase tracking-wider">Modo de Aprendizaje</div>
+                            {GEMINI_MODEL_OPTIONS.map(opt => (
+                                <button key={opt.id} onClick={() => handleModelSelect(opt.id)} className={`w-full text-left px-4 py-3 text-sm hover:bg-surfaceHighlight flex items-center justify-between ${selectedModel === opt.id ? 'text-accent bg-accent/10' : 'text-primary'}`}>
+                                    <span>{opt.name}</span>
+                                    {selectedModel === opt.id && <div className="w-1.5 h-1.5 rounded-full bg-accent"></div>}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+            
+            <div className="flex items-center gap-4">
+                <button 
+                  onClick={() => setShowStudyTools(true)}
+                  className="hidden md:flex items-center gap-2 px-4 py-2 bg-surfaceHighlight hover:bg-border text-primary rounded-xl transition-colors text-sm font-medium"
+                  title="Herramientas de Estudio"
+                >
+                  <BrainIcon sx={{ fontSize: 18 }} />
+                  <span>Estudiar</span>
+                </button>
+                
+                <button 
+                  onClick={() => setShowProgress(true)}
+                  className="hidden md:flex items-center gap-2 px-4 py-2 bg-surfaceHighlight hover:bg-border text-primary rounded-xl transition-colors text-sm font-medium"
+                  title="Ver Progreso"
+                >
+                  <TrendingUpIcon sx={{ fontSize: 18 }} />
+                  <span>Progreso</span>
+                </button>
+
+                {currentSessionId && (
+                  <button 
+                    onClick={() => setShowShare(true)}
+                    className="hidden md:flex items-center gap-2 px-4 py-2 bg-surfaceHighlight hover:bg-border text-primary rounded-xl transition-colors text-sm"
+                    title="Compartir conversación"
+                  >
+                    <ShareIcon sx={{ fontSize: 18 }} />
+                  </button>
+                )}
+                
+                <button 
+                  onClick={toggleTheme} 
+                  className="p-2 rounded-full text-secondary hover:text-primary hover:bg-surface transition-colors"
+                  title={theme === 'light' ? "Modo Oscuro" : "Modo Claro"}
+                >
+                  {theme === 'light' ? <MoonIcon sx={{ fontSize: 20 }} /> : <SunIcon sx={{ fontSize: 20 }} />}
+                </button>
+                
+                <button onClick={() => setShowSettings(true)} className="p-2 hover:bg-surface rounded-full text-secondary hover:text-primary transition-transform active:scale-95 flex items-center gap-2 pr-4 hidden md:flex" title="Mi Perfil">
+                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white text-lg font-bold shadow-lg">{user.avatarId}</div>
+                    <span className="text-sm font-medium text-primary">{user.name}</span>
+                </button>
+            </div>
+        </div>
+
+        {/* Chat Area */}
+        <div className="flex-1 overflow-y-auto px-4">
+          <div className="max-w-3xl mx-auto w-full pb-40 pt-8">
+            {currentMessages.length === 0 ? (
+               <div className="flex flex-col items-center justify-center h-full min-h-[50vh] animate-in fade-in duration-700">
+                  <div className="mb-8">
+                     <span className="text-5xl md:text-6xl font-medium gradient-text block mb-2 text-center md:text-left">Hola, {user.name}.</span>
+                     <span className="text-2xl text-secondary block text-center md:text-left">¿Qué vamos a aprender hoy?</span>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
+                     {SUGGESTIONS.map((s, idx) => {
+                        const IconComponent = s.icon;
+                        return (
+                           <button key={idx} onClick={() => handleSuggestionClick(s.text)} className="bg-surface hover:bg-surfaceHighlight p-4 rounded-xl text-left transition-colors flex items-start gap-3 group border border-transparent hover:border-border">
+                              <span className={`p-2 bg-accent/10 rounded-lg ${s.color} group-hover:scale-110 transition-transform`}>
+                                 <IconComponent sx={{ fontSize: 20 }} />
+                              </span>
+                              <span className="text-secondary group-hover:text-primary text-sm md:text-base">{s.text}</span>
+                           </button>
+                        );
+                     })}
+                  </div>
+               </div>
+            ) : (
+                <>
+                    {currentMessages.map((msg, idx) => (
+                        <MessageBubble 
+                          key={msg.id} 
+                          role={msg.role} 
+                          content={msg.content} 
+                          attachments={msg.attachments} 
+                          groundingSources={msg.groundingSources}
+                          onRegenerate={msg.role === Role.MODEL && idx === currentMessages.length - 1 ? handleRegenerateResponse : undefined}
+                        />
+                    ))}
+                    {isLoading && <MessageBubble role={Role.MODEL} content="" isThinking={true} />}
+                    
+                    {/* Show suggested resources after AI response */}
+                    {!isLoading && suggestedResources.length > 0 && currentMessages.length > 0 && (
+                      <div className="max-w-3xl mx-auto w-full">
+                        <ResourceSuggestions 
+                          resources={suggestedResources}
+                          onClose={() => setSuggestedResources([])}
+                        />
+                      </div>
+                    )}
+                    
+                    <div ref={messagesEndRef} />
+                </>
+            )}
+          </div>
+        </div>
+
+        {/* Input Area */}
+        <div className="absolute bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm pt-4 pb-6 px-4">
+           <div className="max-w-3xl mx-auto w-full relative">
+              <div className="bg-surface rounded-3xl flex flex-col border border-border focus-within:border-secondary transition-colors shadow-lg">
+                 {attachments.length > 0 && (
+                   <div className="px-6 pt-4 flex gap-3 overflow-x-auto">
+                     {attachments.map((file, idx) => (
+                       <div key={idx} className="relative group/attachment flex-shrink-0">
+                         <div className="w-16 h-16 rounded-lg border border-border overflow-hidden bg-background flex items-center justify-center">
+                            {file.mimeType.startsWith('image/') ? (
+                              <img src={`data:${file.mimeType};base64,${file.data}`} className="w-full h-full object-cover opacity-80" alt="Preview"/>
+                            ) : (
+                              <FileIcon sx={{ fontSize: 24 }} className="text-secondary"/>
+                            )}
+                         </div>
+                         <button onClick={() => removeAttachment(idx)} className="absolute -top-1.5 -right-1.5 bg-secondary rounded-full p-0.5 text-background hover:bg-red-500">
+                           <CloseIcon sx={{ fontSize: 12 }} />
+                         </button>
+                       </div>
+                     ))}
+                   </div>
+                 )}
+                 <textarea
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={isListening ? "Escuchando..." : "Escribe, sube una foto de tu tarea o pregunta..."}
+                    className="w-full bg-transparent text-primary placeholder-secondary px-6 py-4 outline-none resize-none min-h-[60px] max-h-[200px]"
+                    rows={1}
+                    aria-label="Campo de entrada de mensaje"
+                    maxLength={4000}
+                 />
+                 
+                 {/* Character Counter */}
+                 {input.length > 0 && (
+                   <div className="px-6 pb-2 flex items-center justify-between">
+                     <div className={`text-xs ${input.length > 3500 ? 'text-orange-500' : 'text-secondary'}`}>
+                       {input.length} / 4000 caracteres
+                     </div>
+                     {input.length > 3500 && (
+                       <div className="text-xs text-orange-500">⚠️ Cerca del límite</div>
+                     )}
+                   </div>
+                 )}
+                 
+                 <div className="flex justify-between items-center px-4 pb-3">
+                    <div className="flex items-center gap-2">
+                       <input 
+                         type="file" 
+                         ref={fileInputRef} 
+                         className="hidden" 
+                         multiple 
+                         accept="image/*,application/pdf,text/*" 
+                         onChange={handleFileSelect}
+                         aria-label="Seleccionar archivos para adjuntar"
+                       />
+                       <button 
+                         onClick={triggerFileUpload} 
+                         className="p-2 text-secondary hover:text-primary hover:bg-surfaceHighlight rounded-full transition-colors" 
+                         title="Adjuntar archivo"
+                         aria-label="Adjuntar archivo"
+                       >
+                         <AttachFileIcon sx={{ fontSize: 20 }} />
+                       </button>
+                       <button 
+                         onClick={triggerFileUpload} 
+                         className="p-2 text-secondary hover:text-primary hover:bg-surfaceHighlight rounded-full transition-colors" 
+                         title="Subir imagen"
+                         aria-label="Subir imagen"
+                       >
+                         <ImageIcon sx={{ fontSize: 20 }} />
+                       </button>
+                       <button 
+                         onClick={toggleListening} 
+                         className={`p-2 rounded-full transition-colors ${isListening ? 'bg-red-500/20 text-red-400 animate-pulse' : 'text-secondary hover:text-primary hover:bg-surfaceHighlight'}`} 
+                         title="Usar micrófono"
+                         aria-label={isListening ? "Detener grabación de voz" : "Iniciar grabación de voz"}
+                       >
+                         {isListening ? <StopIcon sx={{ fontSize: 20 }} /> : <MicIcon sx={{ fontSize: 20 }} />}
+                       </button>
+                    </div>
+                    {isLoading ? (
+                      <button 
+                        onClick={handleStopGeneration}
+                        className="p-2 rounded-full bg-red-500/20 text-red-500 hover:bg-red-500/30 transition-all"
+                        title="Detener generación"
+                        aria-label="Detener generación de respuesta"
+                      >
+                        <StopIcon sx={{ fontSize: 18 }} />
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={() => handleSend()} 
+                        disabled={(!input.trim() && attachments.length === 0)} 
+                        className={`p-2 rounded-full transition-all duration-200 ${(input.trim() || attachments.length > 0) ? 'bg-primary text-background hover:opacity-90' : 'bg-surfaceHighlight text-secondary cursor-not-allowed'}`}
+                        aria-label="Enviar mensaje"
+                        title="Enviar mensaje (Enter)"
+                      >
+                        <SendIcon sx={{ fontSize: 18 }} className={(input.trim() || attachments.length > 0) ? "ml-0.5" : ""} />
+                      </button>
+                    )}
+                 </div>
+              </div>
+              <div className="text-center mt-3 text-xs text-secondary">Nativo Digital ayuda a estudiar y aprender. Verifica la información.</div>
+           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default App;

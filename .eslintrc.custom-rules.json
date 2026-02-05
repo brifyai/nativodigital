@@ -1,0 +1,37 @@
+{
+  "rules": {
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "JSXAttribute[name.name='className'][value.value=/bg-gradient/]",
+        "message": "🚨 REGLA CRÍTICA: NO usar gradientes CSS (bg-gradient-*) en componentes de panel. Causa scroll horizontal. Ver REGLAS_CRITICAS_NO_ROMPER.md"
+      },
+      {
+        "selector": "JSXAttribute[name.name='className'][value.value=/shadow-lg|shadow-xl/]",
+        "message": "⚠️ ADVERTENCIA: Evitar sombras grandes (shadow-lg, shadow-xl) en paneles laterales. Pueden causar overflow."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "components/PreviewPanel.tsx",
+        "components/QuizViewer.tsx",
+        "components/FlashcardViewer.tsx"
+      ],
+      "rules": {
+        "no-restricted-syntax": [
+          "error",
+          {
+            "selector": "JSXAttribute[name.name='className'][value.value=/bg-gradient/]",
+            "message": "🚨 PROHIBIDO: Gradientes CSS en este componente causan scroll horizontal. Usar colores sólidos."
+          },
+          {
+            "selector": "JSXAttribute[name.name='className'][value.value=/w-\\[\\d+px\\]/]",
+            "message": "🚨 PROHIBIDO: Anchos fijos en paneles laterales. Usar w-full max-w-full."
+          }
+        ]
+      }
+    }
+  ]
+}

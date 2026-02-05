@@ -1,0 +1,684 @@
+
+<!DOCTYPE html>
+<html lang="es" class="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="description" content="Nativo Digital - Asistente educativo gratuito impulsado por IA para estudiantes." />
+    <link rel="manifest" href="/manifest.json" />
+    <title>Nativo Digital - Tu Compañero de Estudio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+            colors: {
+              background: 'var(--background)',
+              surface: 'var(--surface)',
+              surfaceHighlight: 'var(--surface-highlight)',
+              primary: 'var(--primary)',
+              secondary: 'var(--secondary)',
+              border: 'var(--border)',
+              accent: '#6B9FED', // Azul más suave y menos intenso
+            },
+            animation: {
+              'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              'float': 'float 6s ease-in-out infinite',
+              'bounce-slow': 'bounce 2s ease-in-out infinite',
+              'spin-slow': 'spin 3s linear infinite',
+              'confetti': 'confetti 1s ease-out forwards',
+            },
+            keyframes: {
+              float: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-20px)' },
+              },
+              confetti: {
+                '0%': { transform: 'translateY(0) rotate(0deg)', opacity: '1' },
+                '100%': { transform: 'translateY(-100px) rotate(720deg)', opacity: '0' },
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      :root {
+        /* LIGHT MODE (DEFAULT) */
+        --background: #ffffff;
+        --surface: #f0f4f9;
+        --surface-highlight: #e9eef6;
+        --primary: #1f1f1f;
+        --secondary: #444746;
+        --border: #e3e3e3;
+      }
+
+      .dark {
+        /* DARK MODE */
+        --background: #131314;
+        --surface: #1e1f20;
+        --surface-highlight: #333537;
+        --primary: #e3e3e3;
+        --secondary: #c4c7c5;
+        --border: #444746;
+      }
+
+      .high-contrast {
+        /* HIGH CONTRAST MODE */
+        --background: #000000;
+        --surface: #1a1a1a;
+        --surface-highlight: #2d2d2d;
+        --primary: #ffffff;
+        --secondary: #cccccc;
+        --border: #666666;
+      }
+
+      .high-contrast.dark {
+        --background: #000000;
+        --surface: #0a0a0a;
+        --surface-highlight: #1a1a1a;
+        --primary: #ffffff;
+        --secondary: #e0e0e0;
+        --border: #888888;
+      }
+
+      body {
+        background-color: var(--background);
+        color: var(--primary);
+        transition: background-color 0.3s ease, color 0.3s ease;
+        -webkit-tap-highlight-color: transparent;
+      }
+      
+      /* Custom scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--secondary);
+      }
+
+      .gradient-text {
+        background: linear-gradient(74deg, #4285F4 0, #9B72CB 9%, #D96570 20%, #D96570 24%, #9B72CB 35%, #4285F4 44%, #9B72CB 50%, #D96570 56%, #4285F4 75%, #4285F4 100%);
+        background-size: 400% 100%;
+        background-clip: text;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        animation: shimmer 8s linear infinite;
+      }
+      @keyframes shimmer {
+        0% { background-position: 100% 0; }
+        100% { background-position: -100% 0; }
+      }
+      
+      input, textarea {
+        font-size: 16px !important;
+      }
+
+      /* SweetAlert2 Custom Styles */
+      .swal2-popup {
+        background: var(--surface) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 1.5rem !important;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
+        padding: 2rem !important;
+        font-family: 'Inter', sans-serif !important;
+        text-align: center !important;
+      }
+
+      .swal2-title {
+        color: var(--primary) !important;
+        font-size: 1.5rem !important;
+        font-weight: 700 !important;
+        margin-bottom: 1rem !important;
+        text-align: center !important;
+      }
+
+      /* Multi-line title for delete confirmations */
+      .swal-title-multiline {
+        white-space: pre-line !important;
+        line-height: 1.6 !important;
+      }
+
+      .swal-title-multiline::first-line {
+        font-size: 1.5rem !important;
+        font-weight: 700 !important;
+      }
+
+      .swal2-html-container {
+        color: var(--secondary) !important;
+        font-size: 0.95rem !important;
+        line-height: 1.6 !important;
+        text-align: center !important;
+      }
+
+      .swal2-confirm {
+        background: #4285F4 !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 0.75rem !important;
+        padding: 0.75rem 2rem !important;
+        font-weight: 600 !important;
+        font-size: 0.95rem !important;
+        cursor: pointer !important;
+        transition: all 0.2s !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+      }
+
+      .swal2-confirm:hover {
+        opacity: 0.9 !important;
+        transform: scale(1.02) !important;
+      }
+
+      .swal2-cancel {
+        background: var(--surface-highlight) !important;
+        color: var(--primary) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 0.75rem !important;
+        padding: 0.75rem 2rem !important;
+        font-weight: 600 !important;
+        font-size: 0.95rem !important;
+        cursor: pointer !important;
+        transition: all 0.2s !important;
+        margin-right: 0.5rem !important;
+      }
+
+      .swal2-cancel:hover {
+        background: var(--border) !important;
+      }
+
+      .swal2-icon {
+        border-width: 3px !important;
+        margin: 1.5rem auto 1rem !important;
+      }
+
+      .swal2-success {
+        border-color: #10b981 !important;
+      }
+
+      .swal2-success [class^='swal2-success-line'] {
+        background-color: #10b981 !important;
+      }
+
+      .swal2-error {
+        border-color: #ef4444 !important;
+      }
+
+      .swal2-error [class^='swal2-x-mark-line'] {
+        background-color: #ef4444 !important;
+      }
+
+      .swal2-warning {
+        border-color: #f59e0b !important;
+        color: #f59e0b !important;
+      }
+
+      .swal2-question {
+        border-color: #4285F4 !important;
+        color: #4285F4 !important;
+      }
+
+      /* Input field styles */
+      .swal2-input,
+      .swal-input {
+        background: var(--background) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 0.75rem !important;
+        padding: 0.75rem 1rem !important;
+        font-size: 1rem !important;
+        color: var(--primary) !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        transition: all 0.2s !important;
+        text-align: center !important;
+        margin: 1rem auto !important;
+        display: block !important;
+      }
+
+      /* Hide inputs ONLY in delete confirmation dialogs */
+      .swal-delete-confirm .swal2-input,
+      .swal-delete-confirm .swal2-textarea,
+      .swal-delete-confirm .swal2-file,
+      .swal-delete-confirm .swal2-select,
+      .swal-delete-confirm .swal2-radio,
+      .swal-delete-confirm .swal2-checkbox,
+      .swal-delete-confirm .swal2-input-label,
+      .swal-delete-confirm .swal2-validation-message,
+      .swal-delete-confirm .swal2-loader,
+      .swal-delete-confirm .swal2-range,
+      .swal-delete-confirm input:not([type="button"]):not(.swal2-confirm):not(.swal2-cancel):not(.swal2-deny):not(.swal2-close),
+      .swal-delete-confirm textarea,
+      .swal-delete-confirm select {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        width: 0 !important;
+        min-height: 0 !important;
+        max-height: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border: none !important;
+        opacity: 0 !important;
+        position: absolute !important;
+        left: -9999px !important;
+        top: -9999px !important;
+        pointer-events: none !important;
+        overflow: hidden !important;
+      }
+
+      /* Ensure the html container (text) is visible */
+      .swal-delete-confirm .swal2-html-container {
+        display: block !important;
+        visibility: visible !important;
+        margin: 1rem 0 !important;
+        padding: 0 !important;
+      }
+
+      /* Hide everything in content except html-container */
+      .swal-delete-confirm .swal2-content > *:not(.swal2-html-container) {
+        display: none !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+      }
+
+      /* Remove spacing from content container */
+      .swal-delete-confirm .swal2-content {
+        padding: 0 !important;
+        margin: 0 !important;
+        display: block !important;
+      }
+
+      /* Proper spacing for actions */
+      .swal-delete-confirm .swal2-actions {
+        margin-top: 1.5rem !important;
+        padding-top: 0 !important;
+      }
+
+      /* Force hide any empty divs */
+      .swal-delete-confirm .swal2-content > div:empty,
+      .swal-delete-confirm .swal2-content > div:not(.swal2-html-container) {
+        display: none !important;
+        height: 0 !important;
+        overflow: hidden !important;
+      }
+
+      .swal2-input:focus {
+        outline: none !important;
+        border-color: #4285F4 !important;
+        box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.1) !important;
+        text-align: center !important;
+      }
+
+      .swal2-input::placeholder {
+        color: var(--secondary) !important;
+        opacity: 0.6 !important;
+        text-align: center !important;
+      }
+
+      /* Actions (buttons container) */
+      .swal2-actions {
+        justify-content: center !important;
+        gap: 0.5rem !important;
+      }
+
+      .swal2-timer-progress-bar {
+        background: #4285F4 !important;
+      }
+
+      .swal2-container {
+        backdrop-filter: blur(4px) !important;
+      }
+
+      .dark .swal2-popup {
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
+      }
+
+      @media (max-width: 640px) {
+        .swal2-popup {
+          width: 90% !important;
+          padding: 1.5rem !important;
+        }
+        
+        .swal2-title {
+          font-size: 1.25rem !important;
+        }
+        
+        .swal2-confirm,
+        .swal2-cancel {
+          padding: 0.625rem 1.5rem !important;
+          font-size: 0.875rem !important;
+        }
+      }
+
+      /* Enhanced Markdown Styles for Interactive Content */
+      .prose {
+        max-width: none !important;
+      }
+
+      /* Cajas decorativas con bordes */
+      .prose hr {
+        border: none !important;
+        height: 2px !important;
+        background: linear-gradient(90deg, transparent, var(--border), transparent) !important;
+        margin: 1.5rem 0 !important;
+      }
+
+      /* Títulos con emojis más destacados */
+      .prose h1, .prose h2, .prose h3, .prose h4 {
+        background: var(--surface) !important;
+        border: 2px solid var(--border) !important;
+        border-radius: 1rem !important;
+        padding: 0.75rem 1.25rem !important;
+        margin: 1.5rem 0 1rem 0 !important;
+        font-weight: 700 !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05) !important;
+      }
+
+      .prose h1 {
+        font-size: 1.5rem !important;
+        background: linear-gradient(135deg, var(--surface), var(--surface-highlight)) !important;
+      }
+
+      .prose h2 {
+        font-size: 1.25rem !important;
+      }
+
+      .prose h3 {
+        font-size: 1.1rem !important;
+      }
+
+      /* Listas con mejor espaciado y bullets personalizados */
+      .prose ul {
+        list-style: none !important;
+        padding-left: 0 !important;
+      }
+
+      .prose ul li {
+        position: relative !important;
+        padding-left: 2rem !important;
+        margin: 0.75rem 0 !important;
+        line-height: 1.6 !important;
+      }
+
+      .prose ul li::before {
+        content: "▸" !important;
+        position: absolute !important;
+        left: 0.5rem !important;
+        color: #4285F4 !important;
+        font-weight: bold !important;
+        font-size: 1.2rem !important;
+      }
+
+      /* Listas ordenadas con números destacados */
+      .prose ol {
+        list-style: none !important;
+        counter-reset: item !important;
+        padding-left: 0 !important;
+      }
+
+      .prose ol li {
+        counter-increment: item !important;
+        position: relative !important;
+        padding-left: 3rem !important;
+        margin: 1rem 0 !important;
+        line-height: 1.6 !important;
+      }
+
+      .prose ol li::before {
+        content: counter(item) !important;
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        background: #4285F4 !important;
+        color: white !important;
+        width: 2rem !important;
+        height: 2rem !important;
+        border-radius: 50% !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        font-weight: 700 !important;
+        font-size: 0.9rem !important;
+        box-shadow: 0 2px 4px rgba(66, 133, 244, 0.3) !important;
+      }
+
+      /* Blockquotes como cajas de información */
+      .prose blockquote {
+        border-left: 4px solid #4285F4 !important;
+        background: var(--surface) !important;
+        border-radius: 0.75rem !important;
+        padding: 1rem 1.5rem !important;
+        margin: 1.5rem 0 !important;
+        font-style: normal !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05) !important;
+      }
+
+      /* Código inline más visible */
+      .prose code {
+        background: var(--surface) !important;
+        border: 1px solid var(--border) !important;
+        color: #4285F4 !important;
+        padding: 0.2rem 0.5rem !important;
+        border-radius: 0.375rem !important;
+        font-size: 0.9em !important;
+        font-weight: 600 !important;
+      }
+
+      /* Bloques de código con mejor diseño */
+      .prose pre {
+        background: var(--surface) !important;
+        border: 2px solid var(--border) !important;
+        border-radius: 1rem !important;
+        padding: 1.5rem !important;
+        margin: 1.5rem 0 !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+        overflow-x: auto !important;
+      }
+
+      .prose pre code {
+        background: transparent !important;
+        border: none !important;
+        color: var(--primary) !important;
+        padding: 0 !important;
+        font-weight: 400 !important;
+      }
+
+      /* Tablas más atractivas */
+      .prose table {
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        width: 100% !important;
+        border: 2px solid var(--border) !important;
+        border-radius: 1rem !important;
+        overflow: hidden !important;
+        margin: 1.5rem 0 !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05) !important;
+      }
+
+      .prose th {
+        background: var(--surface) !important;
+        color: var(--primary) !important;
+        font-weight: 700 !important;
+        padding: 1rem !important;
+        text-align: left !important;
+        border-bottom: 2px solid var(--border) !important;
+      }
+
+      .prose td {
+        padding: 0.875rem 1rem !important;
+        border-bottom: 1px solid var(--border) !important;
+      }
+
+      .prose tr:last-child td {
+        border-bottom: none !important;
+      }
+
+      .prose tr:hover {
+        background: var(--surface-highlight) !important;
+      }
+
+      /* Strong/Bold más destacado */
+      .prose strong {
+        color: var(--primary) !important;
+        font-weight: 700 !important;
+      }
+
+      /* Strong/Bold en mensajes del usuario (fondo azul) debe ser blanco */
+      .prose-invert strong {
+        color: #ffffff !important;
+        font-weight: 700 !important;
+      }
+
+      /* Enlaces más visibles */
+      .prose a {
+        color: #4285F4 !important;
+        text-decoration: none !important;
+        font-weight: 600 !important;
+        border-bottom: 2px solid transparent !important;
+        transition: all 0.2s !important;
+      }
+
+      .prose a:hover {
+        border-bottom-color: #4285F4 !important;
+        background: rgba(66, 133, 244, 0.1) !important;
+        padding: 0.1rem 0.3rem !important;
+        border-radius: 0.25rem !important;
+      }
+
+      /* Párrafos con mejor espaciado */
+      .prose p {
+        margin: 1rem 0 !important;
+        line-height: 1.8 !important;
+      }
+
+      /* Checkboxes para listas de tareas */
+      .prose input[type="checkbox"] {
+        width: 1.25rem !important;
+        height: 1.25rem !important;
+        margin-right: 0.75rem !important;
+        accent-color: #4285F4 !important;
+      }
+
+      /* FORCE NO HORIZONTAL SCROLL IN PREVIEW PANEL */
+      .preview-panel-content {
+        overflow-x: hidden !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+
+      .preview-panel-content > * {
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+
+      .preview-panel-content *,
+      .preview-panel-content *::before,
+      .preview-panel-content *::after {
+        box-sizing: border-box !important;
+        max-width: 100% !important;
+      }
+
+      .preview-panel-content p,
+      .preview-panel-content span,
+      .preview-panel-content div,
+      .preview-panel-content button {
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+        word-break: break-word !important;
+        max-width: 100% !important;
+      }
+
+      /* Remove shadows that can cause overflow */
+      .preview-panel-content .shadow-xl,
+      .preview-panel-content .shadow-lg,
+      .preview-panel-content .shadow-md {
+        box-shadow: none !important;
+      }
+
+      /* FORCE ALL ELEMENTS TO RESPECT CONTAINER WIDTH */
+      * {
+        box-sizing: border-box !important;
+      }
+
+      /* Prevent any element from causing horizontal scroll */
+      body, #root {
+        overflow-x: hidden !important;
+        max-width: 100vw !important;
+      }
+
+      /* Force all text content to wrap */
+      p, span, div, h1, h2, h3, h4, h5, h6, li, td, th {
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+        word-break: break-word !important;
+      }
+
+      /* Ensure images and media respect container width */
+      img, video, iframe, embed, object {
+        max-width: 100% !important;
+        height: auto !important;
+      }
+
+      /* Prevent pre and code blocks from overflowing */
+      pre, code {
+        max-width: 100% !important;
+        overflow-x: auto !important;
+        white-space: pre-wrap !important;
+        word-wrap: break-word !important;
+      }
+
+      /* Ensure tables don't overflow */
+      table {
+        max-width: 100% !important;
+        table-layout: fixed !important;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.39.0",
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "react-markdown": "https://esm.sh/react-markdown@^10.1.0"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+  
+  <!-- Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then(registration => {
+            console.log('SW registered:', registration);
+          })
+          .catch(error => {
+            console.log('SW registration failed:', error);
+          });
+      });
+    }
+  </script>
+</body>
+</html>

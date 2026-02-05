@@ -1,0 +1,12 @@
+{
+  "name": "Nativo Digital - Tu Tutor de IA",
+  "short_name": "Nativo Digital",
+  "description": "Plataforma educativa gratuita impulsada por IA",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#6366f1",
+  "orientation": "portrait-primary",
+  "icons": [],
+  "categories": ["education", "productivity"]
+}

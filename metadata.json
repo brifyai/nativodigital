@@ -1,0 +1,7 @@
+{
+  "name": "AccesoIA - Educación Libre",
+  "description": "Una plataforma de IA accesibile diseñada para democratizar el acceso a la tecnología educativa para jóvenes, integrando múltiples modelos de lenguaje con una interfaz intuitiva.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

@@ -15,7 +15,7 @@ COPY . .
 # Build arguments
 ARG NODE_ENV=production
 ARG REACT_APP_ENVIRONMENT=production
-ARG PORT=3000
+ARG PORT=4000
 ARG REACT_APP_GOOGLE_CLIENT_ID
 ARG REACT_APP_SUPABASE_URL
 ARG REACT_APP_SUPABASE_ANON_KEY
@@ -49,7 +49,7 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose port
-EXPOSE 3000
+EXPOSE 4000
 
 # Start nginx
 CMD ["nginx", "-g", "daemon off;"]

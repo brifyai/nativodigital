@@ -110,10 +110,10 @@ const SpacedRepetitionViewer: React.FC<SpacedRepetitionViewerProps> = ({ session
                     ))}
                   </ul>
 
-                  {session.objective && (
+                  {(session as any).objective && (
                     <div className="mt-3 pt-3 border-t border-teal-200 dark:border-teal-700">
                       <p className="text-xs font-medium text-teal-700 dark:text-teal-300 break-words leading-relaxed">
-                        🎯 Objetivo: {session.objective.trim()}
+                        🎯 Objetivo: {(session as any).objective.trim()}
                       </p>
                     </div>
                   )}

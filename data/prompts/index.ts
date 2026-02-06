@@ -1,4 +1,15 @@
-// Exportar todos los prompts desde un solo lugar
+// Importar todos los prompts
+import { FLASHCARDS_PROMPT } from './flashcards';
+import { QUIZ_PROMPT } from './quiz';
+import { SUMMARY_PROMPT } from './summary';
+import { POMODORO_PROMPT } from './pomodoro';
+import { FEYNMAN_PROMPT } from './feynman';
+import { CORNELL_PROMPT } from './cornell';
+import { MINDMAP_PROMPT } from './mindmap';
+import { SPACED_PROMPT } from './spaced';
+import { ACTIVE_RECALL_PROMPT } from './activeRecall';
+
+// Re-exportar todos los prompts desde un solo lugar
 export { FLASHCARDS_PROMPT } from './flashcards';
 export { QUIZ_PROMPT } from './quiz';
 export { SUMMARY_PROMPT } from './summary';

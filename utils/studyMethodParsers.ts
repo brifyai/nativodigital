@@ -632,14 +632,12 @@ export const parseActiveRecall = (content: string): RecallQuestion[] | null => {
     }
     
     // Add content to current section (for original format)
-    if (currentQuestion && trimmed && currentSection !== 'none' && currentSection !== 'question') {
+    if (currentQuestion && trimmed && currentSection !== 'none') {
       // Remove bullets and markdown
       let cleanText = trimmed.replace(/^[•\-\*→]\s*/, '').replace(/\*\*/g, '').trim();
       
       if (cleanText && cleanText.length > 2) {
-        if (currentSection === 'question') {
-          currentQuestion.question += (currentQuestion.question ? ' ' : '') + cleanText;
-        } else if (currentSection === 'hint') {
+        if (currentSection === 'hint') {
           currentQuestion.hint += (currentQuestion.hint ? ' ' : '') + cleanText;
         } else if (currentSection === 'answer') {
           currentQuestion.answer += (currentQuestion.answer ? ' ' : '') + cleanText;

@@ -122,7 +122,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({ items, isOpen, onClose }) =
               <QuizViewer questions={currentItem.data} title={currentItem.title} />
             )}
             {currentItem.type === 'pomodoro' && (
-              <PomodoroViewer sessions={currentItem.data} title={currentItem.title} topic={currentItem.topic} />
+              <PomodoroViewer sessions={currentItem.data} title={currentItem.title} />
             )}
             {currentItem.type === 'summary' && (
               <SummaryViewer sections={currentItem.data} title={currentItem.title} topic={currentItem.topic} />
@@ -134,7 +134,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({ items, isOpen, onClose }) =
               <CornellViewer note={currentItem.data} title={currentItem.title} topic={currentItem.topic} />
             )}
             {currentItem.type === 'mindmap' && (
-              <MindMapViewer data={currentItem.data} title={currentItem.title} topic={currentItem.topic} />
+              <MindMapViewer centralTopic={currentItem.data.centralTopic} nodes={currentItem.data.nodes} title={currentItem.title} />
             )}
             {currentItem.type === 'spaced' && (
               <SpacedRepetitionViewer sessions={currentItem.data} title={currentItem.title} topic={currentItem.topic} />

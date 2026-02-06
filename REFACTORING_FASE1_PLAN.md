@@ -65,23 +65,14 @@ export const useExport = () => {
 }
 ```
 
-### PASO 3: Crear componentes de UI (1 hora)
-Extraer JSX repetitivo a componentes:
+✅ **Paso 3: Componentes UI COMPLETADO (33%)**
+- ✅ `components/InputArea.tsx` - Área de entrada con attachments y voz (190 líneas)
+- ⏳ `components/ChatInterface.tsx` - Área de mensajes (pendiente)
+- ⏳ `components/AttachmentPreview.tsx` - Preview de archivos (pendiente - puede no ser necesario)
+- ✅ App.tsx actualizado para usar InputArea
+- ✅ Eliminadas ~100 líneas adicionales de App.tsx
 
-**3.1 `components/ChatInterface.tsx`**
-- Área de mensajes
-- Scroll automático
-- Loading states
-
-**3.2 `components/InputArea.tsx`**
-- Textarea
-- Botones de envío
-- Attachments preview
-- Voice button
-
-**3.3 `components/AttachmentPreview.tsx`**
-- Preview de archivos adjuntos
-- Botón de eliminar
+**RESULTADO ACUMULADO:** App.tsx reducido en ~800 líneas totales (de 2,140 a ~1,340 líneas)
 
 ### PASO 4: Actualizar App.tsx (30 min)
 - Importar hooks y componentes nuevos

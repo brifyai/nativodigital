@@ -24,7 +24,8 @@ ARG GEMINI_API_KEY
 ARG CORS_ALLOW_ALL=true
 ARG GIT_SHA
 
-# Set environment variables
+# Set environment variables for Vite build
+# Vite requires variables to be set at build time
 ENV NODE_ENV=${NODE_ENV}
 ENV REACT_APP_ENVIRONMENT=${REACT_APP_ENVIRONMENT}
 ENV PORT=${PORT}
@@ -36,7 +37,7 @@ ENV GEMINI_API_KEY=${GEMINI_API_KEY}
 ENV CORS_ALLOW_ALL=${CORS_ALLOW_ALL}
 ENV GIT_SHA=${GIT_SHA}
 
-# Build the app
+# Build the app with environment variables
 RUN npm run build
 
 # Production stage

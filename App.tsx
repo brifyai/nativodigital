@@ -1,16 +1,16 @@
+// ============================================================================
+// IMPORTS
+// ============================================================================
 
+// React & Router
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
+
+// Material UI Icons
 import {
   Menu as MenuIcon,
-  Send as SendIcon,
-  Mic as MicIcon,
-  Image as ImageIcon,
   ExpandMore as ExpandMoreIcon,
-  AttachFile as AttachFileIcon,
   Close as CloseIcon,
-  InsertDriveFile as FileIcon,
-  StopCircle as StopIcon,
   Delete as DeleteIcon,
   Cancel as CancelIcon,
   AutoAwesome as SparklesIcon,
@@ -33,7 +33,11 @@ import {
   BookmarkBorder as BookmarkBorderIcon,
   PlayArrow as PlayArrowIcon,
   Warning as WarningIcon,
+  Mic as MicIcon,
+  AttachFile as AttachFileIcon,
 } from '@mui/icons-material';
+
+// Components
 import Sidebar from './components/Sidebar';
 import MessageBubble from './components/MessageBubble';
 import InputArea from './components/InputArea';
@@ -43,30 +47,39 @@ import Toast from './components/Toast';
 import ResourceSuggestions from './components/ResourceSuggestions';
 import PreviewPanel from './components/PreviewPanel';
 import BottomNavigation from './components/BottomNavigation';
+
+// Contexts
 import { usePreview } from './contexts/PreviewContext';
-import { Message, Role, Attachment, GroundingSource, QuizSession, SavedContent, QuizQuestion } from './types';
-import { sendMessageStream } from './services/gemini';
-import { SUGGESTIONS, GEMINI_MODEL_OPTIONS } from './constants';
-import { getStorageSizeFormatted } from './utils/storage';
-import { sanitizeText, checkRateLimit } from './utils/sanitizer';
+import { useAuth } from './contexts/AuthContext';
+import { useChat } from './contexts/ChatContext';
+import { useUI } from './contexts/UIContext';
+import { useSavedContent } from './contexts/SavedContentContext';
+
+// Custom Hooks
 import { useTranslation } from './hooks/useTranslation';
 import { useIsMobile } from './hooks/useMediaQuery';
 import { useFileHandling } from './hooks/useFileHandling';
 import { useVoiceRecognition } from './hooks/useVoiceRecognition';
 import { useStudyTools } from './hooks/useStudyTools';
 import { useExport } from './hooks/useExport';
+
+// Types & Constants
+import { Message, Role, Attachment, GroundingSource, QuizSession, SavedContent, QuizQuestion } from './types';
+import { SUGGESTIONS, GEMINI_MODEL_OPTIONS } from './constants';
+
+// Services & Utils
+import { sendMessageStream } from './services/gemini';
+import { getStorageSizeFormatted } from './utils/storage';
+import { sanitizeText, checkRateLimit } from './utils/sanitizer';
 import { suggestResources, EducationalResource } from './data/educationalResources';
 import { detectSubject } from './data/subjectTemplates';
 import { showError } from './utils/sweetAlert';
 import { parseQuizFromText, isQuizContent, extractQuizTitle } from './utils/quizParser';
 
-// Context hooks
-import { useAuth } from './contexts/AuthContext';
-import { useChat } from './contexts/ChatContext';
-import { useUI } from './contexts/UIContext';
-import { useSavedContent } from './contexts/SavedContentContext';
+// ============================================================================
+// LAZY LOADED COMPONENTS
+// ============================================================================
 
-// Lazy load heavy components
 const OnboardingTour = lazy(() => import('./components/OnboardingTour'));
 const StudyTools = lazy(() => import('./components/StudyTools'));
 const ProgressStats = lazy(() => import('./components/ProgressStats'));
@@ -76,10 +89,17 @@ const InteractiveQuiz = lazy(() => import('./components/InteractiveQuiz'));
 const QuizResults = lazy(() => import('./components/QuizResults'));
 const WeakTopicsAnalysis = lazy(() => import('./components/WeakTopicsAnalysis'));
 
+// ============================================================================
+// MAIN COMPONENT
+// ============================================================================
+
 function App() {
   const navigate = useNavigate();
   
-  // Context hooks
+  // ========================================
+  // CONTEXT HOOKS
+  // ========================================
+  
   const { user, showLanding, setShowLanding, customInstruction, setCustomInstruction, handleLogin, handleLogout, handleFullReset } = useAuth();
   const { previewItems, isPanelOpen, closePanel } = usePreview();
   const { 
@@ -126,16 +146,14 @@ function App() {
     clearToast
   } = useUI();
   
-  // Hook de contenido guardado
   const { addSavedContent } = useSavedContent();
-  
-  // Translation
   const { language, changeLanguage } = useTranslation();
-  
-  // Mobile detection
   const isMobile = useIsMobile();
   
-  // Custom hooks
+  // ========================================
+  // CUSTOM HOOKS (Feature-specific)
+  // ========================================
+  
   const { 
     attachments, 
     setAttachments, 
@@ -161,11 +179,14 @@ function App() {
     handleExportText: handleExportTextHook 
   } = useExport();
   
-  // Local state (specific to App component)
+  // ========================================
+  // LOCAL STATE
+  // ========================================
+  
   const [input, setInput] = useState('');
   const [suggestedResources, setSuggestedResources] = useState<EducationalResource[]>([]);
   
-  // Estados para nuevas funcionalidades
+  // Quiz & Content States
   const [showSavedContent, setShowSavedContent] = useState(false);
   const [showInteractiveQuiz, setShowInteractiveQuiz] = useState(false);
   const [showQuizResults, setShowQuizResults] = useState(false);
@@ -179,9 +200,15 @@ function App() {
   const [quizResults, setQuizResults] = useState<QuizSession | null>(null);
   const [viewingContent, setViewingContent] = useState<SavedContent | null>(null);
   
-  // Refs
+  // ========================================
+  // REFS
+  // ========================================
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // ========================================
+  // UTILITY FUNCTIONS
+  // ========================================
+  
   // Auto-scroll to bottom
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -215,6 +242,10 @@ function App() {
     setShowOnboarding(false);
   };
 
+  // ========================================
+  // EVENT HANDLERS (Wrappers for hooks)
+  // ========================================
+  
   // File Handling - Wrapper para usar el hook
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     await handleFileSelectHook(e, showToast);

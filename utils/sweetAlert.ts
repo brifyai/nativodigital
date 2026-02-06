@@ -60,7 +60,7 @@ export const showInfo = (title: string, text?: string) => {
   });
 };
 
-// Confirmation dialog
+// Confirmation dialog (NO INPUT)
 export const showConfirm = (title: string, text?: string, confirmText = 'Sí', cancelText = 'No') => {
   return customSwal.fire({
     icon: 'question',

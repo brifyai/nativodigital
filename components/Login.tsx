@@ -1,6 +1,7 @@
-
 import React, { useState } from 'react';
 import { UserProfile } from '../types';
+import { signUpWithEmail, signUpWithRut, signInWithEmail, signInWithRut, resetPassword } from '../services/auth';
+import { isSupabaseConfigured } from '../lib/supabase';
 import {
   AutoAwesome as SparklesIcon,
   School as GraduationCapIcon,
@@ -84,7 +85,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, toggleTheme, isDarkMode }) => {
     return cleaned.length >= 8;
   };
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -110,12 +111,27 @@ const Login: React.FC<LoginProps> = ({ onLogin, toggleTheme, isDarkMode }) => {
       return;
     }
 
+    // Si Supabase está configurado, usar autenticación real
+    if (isSupabaseConfigured()) {
+      const result = email 
+        ? await signInWithEmail(email, password)
+        : await signInWithRut(rut, password);
+
+      if (!result.success) {
+        setError(result.error || 'Error al iniciar sesión');
+        return;
+      }
+
+      // El AuthContext manejará la carga del perfil automáticamente
+      return;
+    }
+
+    // Fallback: modo local (sin Supabase)
     if (!name.trim()) {
       setError('Ingresa tu nombre');
       return;
     }
 
-    // Simulate login - In production, this would call an API
     onLogin({
       name: name.trim(),
       grade: grade,
@@ -163,19 +179,45 @@ const Login: React.FC<LoginProps> = ({ onLogin, toggleTheme, isDarkMode }) => {
     }
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (name.trim()) {
-      onLogin({
+    if (!name.trim()) {
+      setError('Ingresa tu nombre');
+      return;
+    }
+
+    // Si Supabase está configurado, usar registro real
+    if (isSupabaseConfigured()) {
+      const profile = {
         name: name.trim(),
         grade,
         specificGrade: specificGrade || undefined,
         avatarId: selectedAvatar,
-        email: email || undefined,
-        rut: rut || undefined,
-        password: password
-      });
+      };
+
+      const result = email
+        ? await signUpWithEmail(email, password, profile)
+        : await signUpWithRut(rut, password, profile);
+
+      if (!result.success) {
+        setError(result.error || 'Error al registrar usuario');
+        return;
+      }
+
+      // El AuthContext manejará la carga del perfil automáticamente
+      return;
     }
+
+    // Fallback: modo local (sin Supabase)
+    onLogin({
+      name: name.trim(),
+      grade,
+      specificGrade: specificGrade || undefined,
+      avatarId: selectedAvatar,
+      email: email || undefined,
+      rut: rut || undefined,
+      password: password
+    });
   };
 
   return (
@@ -404,6 +446,28 @@ const Login: React.FC<LoginProps> = ({ onLogin, toggleTheme, isDarkMode }) => {
                 <SparklesIcon sx={{ fontSize: 20 }} />
                 Entrar
               </button>
+
+              {/* Forgot Password */}
+              {isSupabaseConfigured() && email && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!validateEmail(email)) {
+                      setError('Ingresa un email válido primero');
+                      return;
+                    }
+                    const result = await resetPassword(email);
+                    if (result.success) {
+                      setError('✅ ' + result.error); // result.error contiene el mensaje de éxito
+                    } else {
+                      setError(result.error || 'Error al enviar email');
+                    }
+                  }}
+                  className="w-full text-center text-sm text-secondary hover:text-primary transition-colors mt-2"
+                >
+                  ¿Olvidaste tu contraseña?
+                </button>
+              )}
             </form>
           )}
 

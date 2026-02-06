@@ -4,6 +4,8 @@ import { UserProfile } from '../types';
 import { sanitizeUserProfile } from '../utils/sanitizer';
 import { showConfirm, showDeleteConfirm } from '../utils/sweetAlert';
 import { DEFAULT_SYSTEM_INSTRUCTION } from '../services/gemini';
+import { getUserProfile, signOut as supabaseSignOut, onAuthStateChange, getSession } from '../services/auth';
+import { isSupabaseConfigured } from '../lib/supabase';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -21,16 +23,62 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const navigate = useNavigate();
   
-  const [user, setUser] = useState<UserProfile | null>(() => {
-    const saved = localStorage.getItem('nativo_user');
-    return saved ? JSON.parse(saved) : null;
-  });
-
-  const [showLanding, setShowLanding] = useState<boolean>(!user);
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [showLanding, setShowLanding] = useState<boolean>(true);
 
   const [customInstruction, setCustomInstruction] = useState(() => {
     return localStorage.getItem('accesoia_system_instruction') || '';
   });
+
+  // Cargar usuario desde Supabase o localStorage
+  useEffect(() => {
+    const loadUser = async () => {
+      if (isSupabaseConfigured()) {
+        // Intentar cargar desde Supabase
+        const session = await getSession();
+        if (session) {
+          const profile = await getUserProfile();
+          if (profile) {
+            setUser(profile);
+            setShowLanding(false);
+          }
+        }
+      } else {
+        // Fallback a localStorage si Supabase no está configurado
+        const saved = localStorage.getItem('nativo_user');
+        if (saved) {
+          setUser(JSON.parse(saved));
+          setShowLanding(false);
+        }
+      }
+      setLoading(false);
+    };
+
+    loadUser();
+  }, []);
+
+  // Escuchar cambios en la autenticación de Supabase
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+
+    const { data: { subscription } } = onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        const profile = await getUserProfile();
+        if (profile) {
+          setUser(profile);
+          setShowLanding(false);
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setShowLanding(true);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   // Save custom instruction to localStorage
   useEffect(() => {
@@ -42,7 +90,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const handleLogin = (profile: UserProfile) => {
     const sanitized = sanitizeUserProfile(profile);
     setUser(sanitized);
-    localStorage.setItem('nativo_user', JSON.stringify(sanitized));
+    
+    // Guardar en localStorage como fallback
+    if (!isSupabaseConfigured()) {
+      localStorage.setItem('nativo_user', JSON.stringify(sanitized));
+    }
     
     if (!customInstruction) {
       let instruction = DEFAULT_SYSTEM_INSTRUCTION;
@@ -176,6 +228,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     );
     
     if (result.isConfirmed) {
+      // Cerrar sesión en Supabase si está configurado
+      if (isSupabaseConfigured()) {
+        await supabaseSignOut();
+      }
+      
+      // Limpiar localStorage
       localStorage.removeItem('nativo_user');
       setUser(null);
       setShowLanding(true);

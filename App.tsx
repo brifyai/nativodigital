@@ -47,16 +47,17 @@ import { Message, Role, Attachment, GroundingSource, QuizSession, SavedContent, 
 import { sendMessageStream } from './services/gemini';
 import { SUGGESTIONS, GEMINI_MODEL_OPTIONS } from './constants';
 import { getStorageSizeFormatted } from './utils/storage';
-import { optimizeImage, validateImageFile } from './utils/imageOptimizer';
-import { sanitizeText, validateFile, checkRateLimit } from './utils/sanitizer';
+import { sanitizeText, checkRateLimit } from './utils/sanitizer';
 import { useTranslation } from './hooks/useTranslation';
 import { useIsMobile } from './hooks/useMediaQuery';
+import { useFileHandling } from './hooks/useFileHandling';
+import { useVoiceRecognition } from './hooks/useVoiceRecognition';
+import { useStudyTools } from './hooks/useStudyTools';
+import { useExport } from './hooks/useExport';
 import { suggestResources, EducationalResource } from './data/educationalResources';
 import { detectSubject } from './data/subjectTemplates';
 import { showError } from './utils/sweetAlert';
-import Swal from 'sweetalert2';
 import { parseQuizFromText, isQuizContent, extractQuizTitle } from './utils/quizParser';
-import { getPromptForTool } from './data/prompts';
 
 // Context hooks
 import { useAuth } from './contexts/AuthContext';
@@ -88,8 +89,6 @@ function App() {
     isLoading, 
     selectedModel,
     setSelectedModel,
-    attachments,
-    setAttachments,
     handleNewChat, 
     handleDeleteSession,
     handleClearHistory,
@@ -135,9 +134,34 @@ function App() {
   // Mobile detection
   const isMobile = useIsMobile();
   
+  // Custom hooks
+  const { 
+    attachments, 
+    setAttachments, 
+    handleFileSelect: handleFileSelectHook, 
+    removeAttachment: removeAttachmentHook,
+    clearAttachments 
+  } = useFileHandling();
+  
+  const { 
+    isListening, 
+    toggleListening: toggleListeningHook, 
+    stopListening 
+  } = useVoiceRecognition();
+  
+  const { 
+    handleGenerateStudyTool: handleGenerateStudyToolHook, 
+    askForTopic 
+  } = useStudyTools();
+  
+  const { 
+    handleExportData: handleExportDataHook, 
+    handleExportMarkdown: handleExportMarkdownHook, 
+    handleExportText: handleExportTextHook 
+  } = useExport();
+  
   // Local state (specific to App component)
   const [input, setInput] = useState('');
-  const [isListening, setIsListening] = useState(false);
   const [suggestedResources, setSuggestedResources] = useState<EducationalResource[]>([]);
   
   // Estados para nuevas funcionalidades
@@ -157,7 +181,6 @@ function App() {
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<any>(null);
 
   // Auto-scroll to bottom
   const scrollToBottom = () => {
@@ -192,126 +215,21 @@ function App() {
     setShowOnboarding(false);
   };
 
-  // File Handling
+  // File Handling - Wrapper para usar el hook
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const files: File[] = Array.from(e.target.files);
-      const newAttachments: Attachment[] = [];
-
-      for (const file of files) {
-        const validation = validateFile(file);
-        if (!validation.valid) {
-          showToast(validation.error || 'Archivo inválido', 'error');
-          continue;
-        }
-
-        try {
-          if (file.type.startsWith('image/')) {
-            const imageValidation = validateImageFile(file);
-            if (!imageValidation.valid) {
-              showToast(imageValidation.error || 'Imagen inválida', 'error');
-              continue;
-            }
-
-            showToast('Optimizando imagen...', 'info');
-            const optimized = await optimizeImage(file);
-            
-            newAttachments.push({
-              mimeType: optimized.mimeType,
-              data: optimized.data,
-              name: file.name
-            });
-            
-            if (optimized.compressionRatio > 1.5) {
-              showToast(
-                `Imagen optimizada: ${(optimized.compressionRatio).toFixed(1)}x más pequeña`, 
-                'success'
-              );
-            }
-          } else {
-            const reader = new FileReader();
-            const base64Promise = new Promise<string>((resolve) => {
-              reader.onload = (e) => {
-                const result = e.target?.result as string;
-                const base64 = result.split(',')[1];
-                resolve(base64);
-              };
-            });
-            reader.readAsDataURL(file);
-            const base64 = await base64Promise;
-            
-            newAttachments.push({
-              mimeType: file.type,
-              data: base64,
-              name: file.name
-            });
-          }
-        } catch (error) {
-          console.error('Error processing file:', error);
-          showToast('Error al procesar el archivo', 'error');
-        }
-      }
-      
-      setAttachments(prev => [...prev, ...newAttachments]);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
+    await handleFileSelectHook(e, showToast);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const removeAttachment = (index: number) => {
-    setAttachments(prev => prev.filter((_, i) => i !== index));
+    removeAttachmentHook(index);
   };
 
-  // Voice Handling
+  // Voice Handling - Wrapper para usar el hook
   const toggleListening = () => {
-    if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
-      return;
-    }
-
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      const recognition = new SpeechRecognition();
-      recognition.lang = language === 'es' ? 'es-ES' : 'en-US';
-      recognition.interimResults = true;
-      recognition.continuous = true;
-
-      recognition.onstart = () => setIsListening(true);
-      
-      let finalTranscript = '';
-
-      recognition.onresult = (event: any) => {
-        let interimTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript;
-          } else {
-            interimTranscript += event.results[i][0].transcript;
-          }
-        }
-        if (finalTranscript || interimTranscript) {
-            setInput(prev => prev + (finalTranscript ? " " + finalTranscript : "")); 
-            finalTranscript = '';
-        }
-      };
-
-      recognition.onerror = (event: any) => {
-        console.error("Speech recognition error", event.error);
-        setIsListening(false);
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-
-      recognitionRef.current = recognition;
-      recognition.start();
-    } else {
-      showError(
-        "Función no disponible",
-        "Tu navegador no soporta la entrada de voz. Intenta usar Chrome o Edge."
-      );
-    }
+    toggleListeningHook(language, (text: string) => {
+      setInput(prev => prev + text);
+    });
   };
 
   // Wrapper for handleSend from ChatContext
@@ -342,8 +260,7 @@ function App() {
     }
 
     if (isListening) {
-        recognitionRef.current?.stop();
-        setIsListening(false);
+      stopListening();
     }
 
     setInput('');
@@ -352,51 +269,9 @@ function App() {
     await handleSend(sanitizedText, attachments);
   };
 
-  // Helper para pedir tema con SweetAlert
-  const askForTopic = async (toolName: string): Promise<string | null> => {
-    const result = await Swal.fire({
-      title: `${toolName}`,
-      text: '¿Sobre qué tema?',
-      input: 'text',
-      inputPlaceholder: 'Ej: Fotosíntesis, Revolución Francesa, etc.',
-      showCancelButton: true,
-      confirmButtonText: 'Generar',
-      cancelButtonText: 'Cancelar',
-      customClass: {
-        popup: 'swal-popup',
-        title: 'swal-title',
-        input: 'swal-input',
-        confirmButton: 'swal-confirm-button',
-        cancelButton: 'swal-cancel-button',
-      },
-      buttonsStyling: false,
-      inputValidator: (value) => {
-        if (!value) {
-          return '¡Necesitas escribir un tema!';
-        }
-        return null;
-      }
-    });
-    
-    return result.isConfirmed ? result.value : null;
-  };
-
+  // Study Tools - Wrapper para usar el hook
   const handleGenerateStudyTool = (type: 'flashcards' | 'quiz' | 'summary' | 'pomodoro' | 'feynman' | 'cornell' | 'mindmap' | 'spaced' | 'active-recall', topic: string) => {
-    const prompt = getPromptForTool(type, topic);
-    
-    handleSendWrapper(prompt);
-    const toolNames: Record<typeof type, string> = {
-      flashcards: 'tarjetas',
-      quiz: 'preguntas',
-      summary: 'resumen',
-      pomodoro: 'plan de estudio',
-      feynman: 'guía para explicar',
-      cornell: 'apuntes',
-      mindmap: 'dibujo de ideas',
-      spaced: 'calendario',
-      'active-recall': 'preguntas de práctica'
-    };
-    showToast(`✨ Creando tus ${toolNames[type]}...`, 'info');
+    handleGenerateStudyToolHook(type, topic, handleSendWrapper, showToast);
   };
 
   const handleShareConversation = (shareId: string) => {
@@ -414,94 +289,17 @@ function App() {
     }
   };
 
+  // Export - Wrappers para usar el hook
   const handleExportData = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(sessions, null, 2));
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", `nativo_digital_historial_${new Date().toISOString().slice(0,10)}.json`);
-    document.body.appendChild(downloadAnchorNode); 
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
-    showToast('Historial exportado correctamente', 'success');
+    handleExportDataHook(sessions, showToast);
   };
 
   const handleExportMarkdown = () => {
-    if (!currentSessionId) {
-      showToast('No hay conversación activa para exportar', 'warning');
-      return;
-    }
-    
-    const session = sessions.find(s => s.id === currentSessionId);
-    if (!session) return;
-
-    let markdown = `# ${session.title}\n\n`;
-    markdown += `*Exportado el ${new Date().toLocaleString('es-ES')}*\n\n---\n\n`;
-
-    session.messages.forEach(msg => {
-      const role = msg.role === Role.USER ? '👤 **Usuario**' : '🤖 **Nativo Digital**';
-      markdown += `### ${role}\n\n${msg.content}\n\n`;
-      
-      if (msg.groundingSources && msg.groundingSources.length > 0) {
-        markdown += `**Fuentes:**\n`;
-        msg.groundingSources.forEach(source => {
-          markdown += `- [${source.title}](${source.uri})\n`;
-        });
-        markdown += `\n`;
-      }
-      
-      markdown += `---\n\n`;
-    });
-
-    const blob = new Blob([markdown], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${session.title.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().slice(0,10)}.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast('Conversación exportada a Markdown', 'success');
+    handleExportMarkdownHook(currentSessionId, sessions, showToast);
   };
 
   const handleExportText = () => {
-    if (!currentSessionId) {
-      showToast('No hay conversación activa para exportar', 'warning');
-      return;
-    }
-    
-    const session = sessions.find(s => s.id === currentSessionId);
-    if (!session) return;
-
-    let text = `${session.title}\n`;
-    text += `Exportado el ${new Date().toLocaleString('es-ES')}\n`;
-    text += `${'='.repeat(60)}\n\n`;
-
-    session.messages.forEach(msg => {
-      const role = msg.role === Role.USER ? 'USUARIO' : 'NATIVO DIGITAL';
-      text += `[${role}]\n${msg.content}\n\n`;
-      
-      if (msg.groundingSources && msg.groundingSources.length > 0) {
-        text += `Fuentes:\n`;
-        msg.groundingSources.forEach(source => {
-          text += `- ${source.title}: ${source.uri}\n`;
-        });
-        text += `\n`;
-      }
-      
-      text += `${'-'.repeat(60)}\n\n`;
-    });
-
-    const blob = new Blob([text], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${session.title.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().slice(0,10)}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast('Conversación exportada a texto', 'success');
+    handleExportTextHook(currentSessionId, sessions, showToast);
   };
   
   const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {

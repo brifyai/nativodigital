@@ -5,26 +5,27 @@ Reducir App.tsx de 2,140 líneas a ~500 líneas sin perder funcionalidad, diseñ
 
 ## PROGRESO ACTUAL
 ✅ **Paso 1: Extracción de prompts COMPLETADA (100%)**
-- ✅ `data/prompts/flashcards.ts` - Prompts para tarjetas de memoria
-- ✅ `data/prompts/quiz.ts` - Prompts para quizzes interactivos
-- ✅ `data/prompts/summary.ts` - Prompts para resúmenes visuales
-- ✅ `data/prompts/pomodoro.ts` - Prompts para planes de estudio
-- ✅ `data/prompts/feynman.ts` - Prompts para explicar con palabras simples
-- ✅ `data/prompts/cornell.ts` - Prompts para apuntes organizados
-- ✅ `data/prompts/mindmap.ts` - Prompts para mapas mentales
-- ✅ `data/prompts/spaced.ts` - Prompts para repaso espaciado
-- ✅ `data/prompts/activeRecall.ts` - Prompts para recuperación activa
-- ✅ `data/prompts/index.ts` - Exportaciones centralizadas y helper `getPromptForTool()`
-- ✅ `App.tsx` actualizado para usar `getPromptForTool()` en lugar de prompts hardcodeados
+- ✅ 9 archivos de prompts modulares creados
+- ✅ Helper `getPromptForTool()` implementado
+- ✅ App.tsx actualizado para usar prompts modulares
 
-**RESULTADO:** App.tsx reducido en ~400 líneas de código. Prompts ahora son modulares y reutilizables.
+✅ **Paso 2: Custom Hooks COMPLETADO (100%)**
+- ✅ `hooks/useFileHandling.ts` - Manejo de archivos e imágenes (103 líneas)
+- ✅ `hooks/useVoiceRecognition.ts` - Reconocimiento de voz (95 líneas)
+- ✅ `hooks/useStudyTools.ts` - Generación de herramientas de estudio (60 líneas)
+- ✅ `hooks/useExport.ts` - Exportación de datos (135 líneas)
+- ✅ App.tsx actualizado para usar los hooks
+- ✅ Eliminadas ~300 líneas adicionales de App.tsx
+
+**RESULTADO ACUMULADO:** App.tsx reducido en ~700 líneas totales (de 2,140 a ~1,440 líneas)
 
 ## PASOS RESTANTES
 
 ### ✅ PASO 1: Extracción de prompts COMPLETADO
-Todos los archivos de prompts han sido creados y están listos para usar.
 
-### PASO 2: Crear custom hooks (1-2 horas)
+### ✅ PASO 2: Custom Hooks COMPLETADO
+
+### PASO 3: Crear componentes de UI (1 hora)
 Extraer lógica de App.tsx a hooks reutilizables:
 
 **2.1 `hooks/useFileHandling.ts`**

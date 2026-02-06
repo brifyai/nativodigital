@@ -3,7 +3,11 @@ import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
 import { Message, Role, Attachment, GroundingSource } from "../types";
 
 // Initialize client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const apiKey = import.meta.env.REACT_APP_GEMINI_API_KEY;
+if (!apiKey) {
+  console.error('⚠️ REACT_APP_GEMINI_API_KEY no está configurada');
+}
+const ai = new GoogleGenAI({ apiKey: apiKey || '' });
 
 export const DEFAULT_SYSTEM_INSTRUCTION = "Eres un asistente educativo avanzado (AccesoIA). Tienes acceso a Google Search y ejecución de código.\n\n1. Cuando expliques un tema, sé claro y pedagógico.\n2. Si la pregunta requiere datos actuales (noticias, clima, eventos), USA Google Search.\n3. Si es matemáticas o lógica compleja, USA Code Execution para calcular y mostrar el procedimiento.\n4. Si el usuario pregunta algo simple (saludos), responde directamente sin buscar.";
 

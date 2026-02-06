@@ -62,7 +62,7 @@ export const showInfo = (title: string, text?: string) => {
 
 // Confirmation dialog (NO INPUT)
 export const showConfirm = (title: string, text?: string, confirmText = 'Sí', cancelText = 'No') => {
-  return customSwal.fire({
+  return Swal.fire({
     icon: 'question',
     title,
     text,
@@ -70,6 +70,18 @@ export const showConfirm = (title: string, text?: string, confirmText = 'Sí', c
     confirmButtonText: confirmText,
     cancelButtonText: cancelText,
     reverseButtons: true,
+    buttonsStyling: false,
+    customClass: {
+      popup: 'swal-popup',
+      title: 'swal-title',
+      htmlContainer: 'swal-text',
+      confirmButton: 'swal-confirm-button',
+      cancelButton: 'swal-cancel-button',
+    },
+    // Explicitly disable any input
+    input: undefined,
+    inputValue: undefined,
+    showLoaderOnConfirm: false,
   });
 };
 
@@ -91,6 +103,9 @@ export const showDeleteConfirm = (title: string, text?: string) => {
       confirmButton: 'swal-confirm-button',
       cancelButton: 'swal-cancel-button',
     },
+    // Explicitly disable any input
+    input: undefined,
+    inputValue: undefined,
     allowEnterKey: true,
     allowEscapeKey: true,
     allowOutsideClick: true,

@@ -3,9 +3,9 @@ import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
 import { Message, Role, Attachment, GroundingSource } from "../types";
 
 // Initialize client
-const apiKey = import.meta.env.REACT_APP_GEMINI_API_KEY;
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 if (!apiKey) {
-  console.error('⚠️ REACT_APP_GEMINI_API_KEY no está configurada');
+  console.error('⚠️ VITE_GEMINI_API_KEY no está configurada');
 }
 const ai = new GoogleGenAI({ apiKey: apiKey || '' });
 

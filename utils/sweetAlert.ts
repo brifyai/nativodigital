@@ -72,7 +72,7 @@ export const showConfirm = (title: string, text?: string, confirmText = 'Sí', c
     reverseButtons: true,
     buttonsStyling: false,
     customClass: {
-      popup: 'swal-popup',
+      popup: 'swal-popup swal-confirm-no-input',
       title: 'swal-title',
       htmlContainer: 'swal-text',
       confirmButton: 'swal-confirm-button',

@@ -261,7 +261,21 @@
       .swal-delete-confirm .swal2-range,
       .swal-delete-confirm input:not([type="button"]):not(.swal2-confirm):not(.swal2-cancel):not(.swal2-deny):not(.swal2-close),
       .swal-delete-confirm textarea,
-      .swal-delete-confirm select {
+      .swal-delete-confirm select,
+      /* Also hide inputs in regular confirmation dialogs (showConfirm) */
+      .swal-confirm-no-input .swal2-input,
+      .swal-confirm-no-input .swal2-textarea,
+      .swal-confirm-no-input .swal2-file,
+      .swal-confirm-no-input .swal2-select,
+      .swal-confirm-no-input .swal2-radio,
+      .swal-confirm-no-input .swal2-checkbox,
+      .swal-confirm-no-input .swal2-input-label,
+      .swal-confirm-no-input .swal2-validation-message,
+      .swal-confirm-no-input .swal2-loader,
+      .swal-confirm-no-input .swal2-range,
+      .swal-confirm-no-input input:not([type="button"]):not(.swal2-confirm):not(.swal2-cancel):not(.swal2-deny):not(.swal2-close),
+      .swal-confirm-no-input textarea,
+      .swal-confirm-no-input select {
         display: none !important;
         visibility: hidden !important;
         height: 0 !important;

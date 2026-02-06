@@ -74,20 +74,38 @@
 /* Hide input ONLY in confirmation dialogs (question/warning icons) */
 /* This ensures inputs are hidden in showConfirm and showDeleteConfirm */
 /* but NOT in dialogs that explicitly need input like askForTopic */
-.swal2-icon-question ~ .swal2-html-container ~ .swal2-input,
-.swal2-icon-question ~ .swal2-html-container ~ .swal2-textarea,
-.swal2-icon-warning ~ .swal2-html-container ~ .swal2-input,
-.swal2-icon-warning ~ .swal2-html-container ~ .swal2-textarea {
+
+/* Hide the input element itself */
+.swal2-popup .swal2-input:not([value]):not([placeholder]),
+.swal2-popup .swal2-textarea:not([value]):not([placeholder]) {
   display: none !important;
+  visibility: hidden !important;
   height: 0 !important;
+  min-height: 0 !important;
   padding: 0 !important;
   margin: 0 !important;
   border: none !important;
+  opacity: 0 !important;
 }
 
-/* Alternative selector for different DOM structures */
-.swal2-popup:has(.swal2-icon-question):not(:has(input[type="text"][value])) .swal2-input,
-.swal2-popup:has(.swal2-icon-warning):not(:has(input[type="text"][value])) .swal2-input {
+/* Target inputs in question/warning dialogs specifically */
+.swal2-icon-question ~ * .swal2-input,
+.swal2-icon-question ~ * .swal2-textarea,
+.swal2-icon-warning ~ * .swal2-input,
+.swal2-icon-warning ~ * .swal2-textarea {
+  display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  opacity: 0 !important;
+}
+
+/* Hide any empty input containers */
+.swal2-popup:has(.swal2-icon-question) .swal2-input:empty,
+.swal2-popup:has(.swal2-icon-warning) .swal2-input:empty {
   display: none !important;
 }
 
@@ -95,6 +113,15 @@
 .swal2-popup:has(.swal2-icon-question) .swal2-input-label,
 .swal2-popup:has(.swal2-icon-warning) .swal2-input-label {
   display: none !important;
+}
+
+/* Force hide all inputs in popups with question icon that don't have explicit input config */
+.swal2-popup:has(.swal2-icon.swal2-question) input[type="text"]:not([placeholder]),
+.swal2-popup:has(.swal2-icon.swal2-warning) input[type="text"]:not([placeholder]) {
+  display: none !important;
+  visibility: hidden !important;
+  position: absolute !important;
+  left: -9999px !important;
 }
 
 /* Confirm button */

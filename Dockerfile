@@ -14,11 +14,9 @@ COPY . .
 
 # Build arguments
 ARG REACT_APP_GEMINI_API_KEY
-ARG GEMINI_API_KEY
 
 # Set environment variables for Vite build
 ENV REACT_APP_GEMINI_API_KEY=${REACT_APP_GEMINI_API_KEY}
-ENV GEMINI_API_KEY=${GEMINI_API_KEY}
 
 # Build the app with environment variables
 RUN npm run build

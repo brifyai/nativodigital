@@ -4,6 +4,7 @@
 
 # Nativo Digital - Tu Tutor de IA Gratuito
 
+
 Plataforma educativa impulsada por IA que adapta las explicaciones a tu nivel educativo. 100% gratuita y diseñada para estudiantes de Latinoamérica.
 
 ## 🚀 Características
